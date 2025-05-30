@@ -1,0 +1,185 @@
+name: Deploy to Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'The release tag to deploy'
+        required: true
+        default: 'main'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.release }}
+
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+
+      - name: Generate .env file
+        env:
+          APP_NAME: "Amazing Wise Friends API"
+          APP_DESCRIPTION: "Amazing Wise Friends Service API Specification"
+          APP_ENCODING_ALG: "HS256"
+          APP_ISSUER: "studio.ultd.awf"
+          APP_JWT_ENABLED: "False"
+          APP_LOG_NAME: awf_app.log
+          APP_VERSION: 1.0.0
+          API_KEY_VALUE: ${{ secrets.API_KEY_VALUE }}
+          DEFAULT_LANGUAGE: en_US
+          DEFAULT_LANGUAGE_ID: 2
+          INITIAL_PHOTO: faces/face1.jpg
+          UPLOAD_FOLDER: static/uploads
+          ITEMS_PER_PAGE: 15
+          APP_URL: "http://awf.ultd.studio"
+          ADM_URL: "http://adm.ultd.studio"
+          SITE_URL: "http://www.ultd.studio"
+          PREFERRED_URL_SCHEME: https
+          DEBUG: ${{ secrets.DEBUG }}
+          TESTING: False
+          CSRF_ENABLED: True
+          CONTACT_EMAIL: contact@ultd.studio
+          CONTACT_PHONE: 21996509281
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
+          EMAIL_PORT: ${{ secrets.EMAIL_PORT }}
+          EMAIL_NAME: "Amazing Wise Friends"
+          SESSION_COOKIE_NAME: awf-session
+          SESSION_TIMEOUT: 600
+          ELASTICSEARCH_URL: ${{ secrets.ELASTICSEARCH_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SQLALCHEMY_ECHO: False
+          SQLALCHEMY_TRACK_MODIFICATIONS: False
+          SQLALCHEMY_POOL_RECYCLE: 299
+          SQLALCHEMY_POOL_TIMEOUT: 20
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
+          REDIS_PORT: ${{ secrets.REDIS_PORT }}
+          PAYMENT_SYSTEM_HOST: ${{ secrets.PAYMENT_SYSTEM_HOST }}
+          PAYMENT_SYSTEM_NOTIFICATION_KEY_NAME: "X-Notification-Key"
+          PAYMENT_SYSTEM_APP_KEY_NAME: "X-Appl-Key"
+          PAYMENT_SYSTEM_CUSTOMER_KEY: ${{ secrets.PAYMENT_SYSTEM_CUSTOMER_KEY }}
+          PAYMENT_SYSTEM_APP_KEY: ${{ secrets.PAYMENT_SYSTEM_APP_KEY }}
+          PAYMENT_SYSTEM_NOTIFICATION_KEY: ${{ secrets.PAYMENT_SYSTEM_NOTIFICATION_KEY }}
+          ULTD_STUDIO_HOST: ${{ secrets.ULTD_STUDIO_HOST }}
+          ULTD_API_KEY_VALUE: ${{ secrets.ULTD_API_KEY_VALUE }}
+          AWF_MINIO_HOST: ${{ secrets.AWF_MINIO_HOST }}
+          AWF_MINIO_USER: ${{ secrets.AWF_MINIO_USER }}
+          AWF_MINIO_PASSWORD: ${{ secrets.AWF_MINIO_PASSWORD }}
+          AWF_MINIO_API_PORT: ${{ secrets.AWF_MINIO_API_PORT }}
+          AWF_MINIO_CONSOLE_PORT: ${{ secrets.AWF_MINIO_CONSOLE_PORT }}
+          AWF_MINIO_BUCKET: ${{ secrets.AWF_MINIO_BUCKET }}
+          AWF_CDN_PORT: ${{ secrets.AWF_CDN_PORT }}
+          ES_KEY: ${{ secrets.ES_KEY }}
+
+        run: |
+          cat <<EOF > .env
+          APP_NAME=${APP_NAME}
+          APP_DESCRIPTION=${APP_DESCRIPTION}
+          APP_ENCODING_ALG=${APP_ENCODING_ALG}
+          APP_ISSUER=${APP_ISSUER}
+          APP_JWT_ENABLED=${APP_JWT_ENABLED}
+          APP_LOG_NAME=${APP_LOG_NAME}
+          APP_VERSION=${APP_VERSION}
+          API_KEY_VALUE=${API_KEY_VALUE}
+          APP_URL=${APP_URL}
+          ADM_URL=${ADM_URL}
+          SITE_URL=${SITE_URL}
+          PREFERRED_URL_SCHEME=${PREFERRED_URL_SCHEME}
+          DEBUG=${DEBUG}
+          TESTING=${TESTING}
+          CSRF_ENABLED=${CSRF_ENABLED}
+          CONTACT_EMAIL=${CONTACT_EMAIL}
+          CONTACT_PHONE=${CONTACT_PHONE}
+          EMAIL_USER=${EMAIL_USER}
+          EMAIL_PASSWORD=${EMAIL_PASSWORD}
+          EMAIL_SENDER=${EMAIL_SENDER}
+          EMAIL_HOST=${EMAIL_HOST}
+          EMAIL_PORT=${EMAIL_PORT}
+          EMAIL_NAME=${EMAIL_NAME}
+          DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE}
+          DEFAULT_LANGUAGE_ID=${DEFAULT_LANGUAGE_ID}
+          INITIAL_PHOTO=${INITIAL_PHOTO}
+          UPLOAD_FOLDER=${UPLOAD_FOLDER}
+          ITEMS_PER_PAGE=${ITEMS_PER_PAGE}
+          SESSION_COOKIE_NAME=${SESSION_COOKIE_NAME}
+          SESSION_TIMEOUT=${SESSION_TIMEOUT}
+          ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+          DATABASE_URL=${DATABASE_URL}
+          DATABASE_PORT=${DATABASE_PORT}
+          POSTGRES_DB=${POSTGRES_DB}
+          POSTGRES_USER=${POSTGRES_USER}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          SQLALCHEMY_ECHO=${SQLALCHEMY_ECHO}
+          SQLALCHEMY_TRACK_MODIFICATIONS=${SQLALCHEMY_TRACK_MODIFICATIONS}
+          SQLALCHEMY_POOL_RECYCLE=${SQLALCHEMY_POOL_RECYCLE}
+          SQLALCHEMY_POOL_TIMEOUT=${SQLALCHEMY_POOL_TIMEOUT}
+          REDIS_HOST=${REDIS_HOST}
+          REDIS_PORT=${REDIS_PORT}
+          PAYMENT_SYSTEM_HOST=${PAYMENT_SYSTEM_HOST}
+          PAYMENT_SYSTEM_NOTIFICATION_KEY_NAME=${PAYMENT_SYSTEM_NOTIFICATION_KEY_NAME}
+          PAYMENT_SYSTEM_APP_KEY_NAME=${PAYMENT_SYSTEM_APP_KEY_NAME}
+          PAYMENT_SYSTEM_CUSTOMER_KEY=${PAYMENT_SYSTEM_CUSTOMER_KEY}
+          PAYMENT_SYSTEM_APP_KEY=${PAYMENT_SYSTEM_APP_KEY}
+          PAYMENT_SYSTEM_NOTIFICATION_KEY=${PAYMENT_SYSTEM_NOTIFICATION_KEY}
+          ULTD_STUDIO_HOST=${ULTD_STUDIO_HOST}
+          ULTD_API_KEY_VALUE=${ULTD_API_KEY_VALUE}
+          AWF_MINIO_HOST=${AWF_MINIO_HOST}
+          AWF_MINIO_USER=${AWF_MINIO_USER}
+          AWF_MINIO_PASSWORD=${AWF_MINIO_PASSWORD}
+          AWF_MINIO_API_PORT=${AWF_MINIO_API_PORT}
+          AWF_MINIO_CONSOLE_PORT=${AWF_MINIO_CONSOLE_PORT}
+          AWF_MINIO_BUCKET=${AWF_MINIO_BUCKET}
+          AWF_CDN_PORT=${AWF_CDN_PORT}
+          ES_KEY=${ES_KEY}
+          EOF
+
+      - name: Deploy to Server
+        env:
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          APP_PATH: /var/www/apps/awf_api
+        run: |
+          # Copy the files to the remote server
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no .env $SSH_USER@$SERVER_HOST:$APP_PATH/
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no application.py $SSH_USER@$SERVER_HOST:$APP_PATH/
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no docker-compose-prod.yml $SSH_USER@$SERVER_HOST:$APP_PATH/docker-compose.yml
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no Dockerfile $SSH_USER@$SERVER_HOST:$APP_PATH/
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no startup.sh $SSH_USER@$SERVER_HOST:$APP_PATH/
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no alembic.ini $SSH_USER@$SERVER_HOST:$APP_PATH/
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no init-buckets.sh $SSH_USER@$SERVER_HOST:$APP_PATH/
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no nginx.conf.template $SSH_USER@$SERVER_HOST:$APP_PATH/
+          
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST "echo $SSH_PASSWORD | sudo -S rm -rf $APP_PATH/requirements"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -r ./requirements $SSH_USER@$SERVER_HOST:$APP_PATH/
+          
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST "echo $SSH_PASSWORD | sudo -S rm -rf $APP_PATH/awf"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -r ./awf $SSH_USER@$SERVER_HOST:$APP_PATH/
+          
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST "echo $SSH_PASSWORD | sudo -S rm -rf $APP_PATH/migrations"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -r ./migrations $SSH_USER@$SERVER_HOST:$APP_PATH/
+          
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST "echo $SSH_PASSWORD | sudo -S rm -rf $APP_PATH/tasks"
+          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -r ./tasks $SSH_USER@$SERVER_HOST:$APP_PATH/
+          
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST "echo $SSH_PASSWORD | sudo -S rm -rf $APP_PATH/nginx-cache"
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST "echo $SSH_PASSWORD | sudo -S mkdir -p $APP_PATH/nginx-cache"
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST "echo $SSH_PASSWORD | sudo -S chmod 777 $APP_PATH/nginx-cache"
+          
+          # SSH into the remote server and prepare for deployment
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no $SSH_USER@$SERVER_HOST <<EOF
+            cd $APP_PATH/
+            docker compose down
+            docker compose up --remove-orphans --build -d
+          EOF
