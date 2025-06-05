@@ -1,0 +1,88 @@
+networks:
+  default:
+    name: ehp-core-network
+    driver: bridge
+
+services:
+  ehp-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ehp-core-application
+    image: ehp-core-application
+    hostname: ehp-core-application
+    env_file:
+      - .env
+    networks:
+      default:
+        aliases:
+          - ehp-core-application
+    ports:
+      - 17000:17000
+    tty: true
+    volumes:
+      - .:/var/task/ehp-core:delegated
+      - /var/task/ehp-core/.venv
+    depends_on:
+      - ehp-core-redis
+      - ehp-core-elasticsearch
+
+  ehp-core-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.5.1
+    container_name: ehp-core-elasticsearch
+    hostname: ehp-core-elasticsearch
+    networks:
+      default:
+        aliases:
+          - ehp-core-elasticsearch
+    environment:
+      - node.name=es01
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1028m -Xmx1028m
+      - Des.cgroups.disabled=true
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    ulimits:
+      memlock:
+        hard: -1
+        soft: -1
+    volumes:
+      - ehp-core-esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -s http://localhost:9200/_cluster/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ehp-core-redis:
+    image: "redis:latest"
+    container_name: ehp-core-redis
+    hostname: ehp-core-redis
+    networks:
+      default:
+        aliases:
+          - ehp-core-redis
+    command: [
+      "redis-server",
+      "--appendonly", "yes",        # Enable AOF persistence
+      "--save", "900 1",            # Save a snapshot if at least 1 key changed within 900 seconds
+      "--save", "300 10",           # Save if 10 keys changed within 300 seconds
+      "--save", "60 10000"          # Save if 10000 keys changed within 60 seconds
+    ]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:
+  ehp-core-esdata:
+    driver: local
