@@ -4,7 +4,7 @@
 import logging
 from typing import Any
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
@@ -13,13 +13,12 @@ from starlette.responses import JSONResponse
 from ehp.base.middleware import RequestMiddleware
 from ehp.config import settings
 from ehp.core.services import (
-    password_reset_confirm_router,
-    # logout_router,
-    password_public_router,
+    logout_router,
     password_router,
     registration_router,
     root_router,
     token_router,
+    wikiclip_router,
 )
 from ehp.db.db_manager import get_db_manager
 from ehp.utils.authentication import needs_api_key
@@ -34,13 +33,6 @@ app = FastAPI(
     dependencies=[Depends(needs_api_key), Depends(get_db_manager)],
 )
 
-# app.include_router(auth_router)
-# app.include_router(logout_router)
-app.include_router(password_public_router)
-app.include_router(password_router)
-app.include_router(registration_router)
-app.include_router(root_router)
-app.include_router(token_router)
 
 
 origins = [
@@ -58,30 +50,18 @@ app.add_middleware(
 )
 
 app.add_middleware(RequestMiddleware)
+
+app.include_router(logout_router)
+app.include_router(password_router)
 app.include_router(registration_router)
 app.include_router(root_router)
-app.include_router(password_reset_confirm_router)
 app.include_router(token_router)
-app.include_router(logout_router)
+app.include_router(wikiclip_router)
 
-
-@app.middleware("http")
-async def process_after_request(request: Request, call_next: Any) -> Any:
-    response = await call_next(request)
-
-    # Access the configuration information set in the request state.
-    request_config = getattr(request.state, "request_config", None)
-    if request_config:
-        db_session = request_config.get("db_session")
-        if db_session:
-            db_session.close()
-
-    return response
 
 
 @app.get("/openapi.json")
 async def get_open_api_endpoint() -> JSONResponse:
-    # auth: str = Depends(needs_api_key)
     if settings.DEBUG:
         return JSONResponse(
             get_openapi(
@@ -97,7 +77,6 @@ async def get_open_api_endpoint() -> JSONResponse:
 @app.get("/docs")
 @app.get("/redoc")
 async def get_documentation() -> Any:
-    # auth: str = Depends(needs_api_key)
     if settings.DEBUG:
         return get_swagger_ui_html(openapi_url="/openapi.json", title="docs")
     return None

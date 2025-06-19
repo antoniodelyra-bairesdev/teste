@@ -50,7 +50,7 @@ def test_function_name():
 For async tests, add the asyncio marker:
 
 ```python
-@pytest.mark.asyncio
+
 async def test_async_function():
     ...
 ```
@@ -77,7 +77,7 @@ For async unit tests:
 
 ```python
 @pytest.mark.unit
-@pytest.mark.asyncio
+
 async def test_async_function():
     # Arrange
     input_data = "test input"
@@ -185,7 +185,7 @@ def test_with_client(app):
 For tests that involved database operations:
 
 ```python
-@pytest.mark.asyncio
+
 async def test_database_operation(test_db_session, test_db_manager):
     # Create test data
     model = TestModel(name="Test")
