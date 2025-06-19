@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from ehp.config import settings
@@ -38,3 +38,8 @@ def str_to_date(str_date: str) -> datetime:
 
 def date_to_str(date_obj: datetime) -> str:
     return datetime.strftime(date_obj, settings.DATE_FORMAT["date_only_br"])
+
+
+def timezone_now() -> datetime:
+    """Get the current time in the configured timezone."""
+    return datetime.now(timezone.utc)

@@ -1,15 +1,16 @@
-import hashlib
-import hmac
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Any, NotRequired, Tuple, TypedDict, cast
-
+import hashlib
+import hmac
 import jwt
+from typing import Any, cast, NotRequired, Optional, Tuple, TypedDict
+
 from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
 
 from ehp.base.aws import AWSClient
 from ehp.config.ehp_core import settings
+
 
 JWT_SECRET_NAME = "EHP_JWT_SECRET"
 ACCESS_TOKEN_EXPIRE = timedelta(seconds=settings.SESSION_TIMEOUT)
@@ -20,17 +21,20 @@ def aws_secret_getter(secret_name: str) -> str:
     """
     Get the secret value from AWS Secrets Manager.
     """
-    aws_client = AWSClient()
-    secret_value = aws_client.secretsmanager_client.get_secret_value(
-        SecretId=secret_name
-    )
-    secret: str = secret_value["SecretString"]
+    try:
+        aws_client = AWSClient()
+        secret_value = aws_client.secretsmanager_client.get_secret_value(
+            SecretId=secret_name
+        )
+        secret: str = secret_value["SecretString"]
+    except Exception as e:
+        secret = settings.SECRET_KEY
     return secret
 
 
 class TokenPayload(BaseModel):
     access_token: str
-    refresh_token: str | None = None
+    refresh_token: Optional[str] = None
     token_type: str = "Bearer"
     expires_at: int
 

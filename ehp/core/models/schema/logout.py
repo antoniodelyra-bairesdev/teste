@@ -7,5 +7,5 @@ class LogoutResponse(BaseModel):
     Response model for a successful logout.
     """
 
-    message: str = Field(..., example="Logged out successfully")
-    status_code: int = Field(default=status.HTTP_200_OK, example=200)
+    message: str = Field(..., examples=["Logged out successfully"])
+    status_code: int = Field(default=status.HTTP_200_OK, examples=[200])

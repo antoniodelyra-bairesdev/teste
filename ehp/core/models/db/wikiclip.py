@@ -1,9 +1,9 @@
-from datetime import datetime
-
-from sqlalchemy import Column, DateTime, Integer, String, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy import JSON, TIMESTAMP, Column, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ehp.core.models.db.base import BaseModel
+from ehp.utils.date_utils import timezone_now
+
 from .wikiclip_tag import wikiclip_tag
 
 
@@ -12,11 +12,18 @@ class WikiClip(BaseModel):
     __table_args__ = {"extend_existing": True}
 
     id = Column("wiki_cd_id", Integer, primary_key=True)
-    title = Column("wiki_tx_title", String(250), nullable=False)
+    title = Column("wiki_tx_title", String(500), nullable=False)
     content = Column("wiki_tx_content", Text, nullable=False)
-    url = Column("wiki_tx_url", String(250), nullable=False)
+    url = Column("wiki_tx_url", String(2000), nullable=False, unique=True)
+    related_links = Column("wiki_js_related_links", JSON, nullable=True)
     created_at = Column(
-        "wiki_dt_created_at", DateTime, default=datetime.now, nullable=False
+        "wiki_dt_created_at",
+        TIMESTAMP(timezone=True),
+        default=timezone_now,
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(
+        "user_cd_id", Integer, ForeignKey("user.user_cd_id"), nullable=True
     )
 
     tags = relationship(
@@ -26,5 +33,5 @@ class WikiClip(BaseModel):
         lazy=False,
         order_by="Tag.description",
     )
-
     analyses = relationship("Analysis", back_populates="wikiclip")
+    user = relationship("User")

@@ -18,8 +18,8 @@ if config.config_file_name is not None:
 
 # Import your models / metadata
 from ehp.config import settings
-from ehp.db import Base
 from ehp.core.models.db import *
+from ehp.db import Base
 
 # The target metadata for 'autogenerate'
 target_metadata = Base.metadata
@@ -67,10 +67,20 @@ def run_migrations_offline() -> None:
 
 def do_run_migrations(connection: Connection) -> None:
     """Helper that configures the migration context using an existing connection."""
+    
+    def process_revision_directives(context, revision, directives):
+        """Process revision directives to disable empty migrations in autogenerate."""
+        if config.cmd_opts.autogenerate:
+            script = directives[0]
+            if script.upgrade_ops.is_empty():
+                directives[:] = []
+                print("No changes in schema detected.")
+
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        process_revision_directives=process_revision_directives,
         # No need for connect_args here, because we've already created
         # the Engine/Connection with SSL in async_engine_from_config.
     )

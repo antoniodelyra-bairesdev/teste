@@ -45,7 +45,7 @@ class TestDBManager:
         assert id(session) in db_manager._active_sessions
         assert db_manager._active_sessions[id(session)] == session
 
-    @pytest.mark.asyncio
+    
     async def test_transaction_success(self):
         """Test successful transaction execution."""
         db_manager = DBManager()
@@ -71,7 +71,7 @@ class TestDBManager:
         mock_session.begin.assert_called_once()
         mock_session.close.assert_called_once()
 
-    @pytest.mark.asyncio
+    
     async def test_transaction_error(self):
         """Test transaction rollback on error."""
         db_manager = DBManager()
@@ -101,7 +101,7 @@ class TestDBManager:
         mock_session.rollback.assert_called_once()
         # mock_session.close.assert_called_once() # This is not being accounted as outermost
 
-    @pytest.mark.asyncio
+    
     async def test_nested_transactions(self):
         """Test nested transactions."""
         db_manager = DBManager()
@@ -136,7 +136,7 @@ class TestDBManager:
         # Verify close was called once (after both transactions complete)
         mock_session.close.assert_called_once()
 
-    @pytest.mark.asyncio
+    
     async def test_transaction_with_exception_in_nested(self):
         """Test exception handling in nested transactions."""
         db_manager = DBManager()
@@ -170,7 +170,7 @@ class TestDBManager:
         # Verify close was called
         mock_session.close.assert_called_once()
 
-    @pytest.mark.asyncio
+    
     async def test_is_in_transaction(self):
         """Test is_in_transaction method."""
         db_manager = DBManager()
@@ -196,7 +196,7 @@ class TestDBManager:
         # Check after transaction
         assert not db_manager.is_in_transaction(mock_session)
 
-    @pytest.mark.asyncio
+    
     async def test_get_transaction_depth(self):
         """Test get_transaction_depth method."""
         db_manager = DBManager()
@@ -226,7 +226,7 @@ class TestDBManager:
         # Check after transaction
         assert db_manager.get_transaction_depth(mock_session) == 0
 
-    @pytest.mark.asyncio
+    
     async def test_cleanup(self):
         """Test cleanup method."""
         db_manager = DBManager()

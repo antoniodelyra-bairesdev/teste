@@ -4,13 +4,17 @@ import uuid
 from contextvars import ContextVar
 from typing import Annotated, Optional
 
-from fastapi import Header, HTTPException, Request, Response
+from fastapi import Depends, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
+from ehp.base.jwt_helper import JWTClaimsPayload
 from ehp.base.session import SessionManager
 from ehp.config import settings
 from ehp.utils.base import log_error
+
+auth_handler = APIKeyHeader(name="x-token-auth", auto_error=True)
 
 
 async def get_user_session(
@@ -28,6 +32,32 @@ async def get_user_session(
             request.state.request_config["user_session"] = token
         else:
             request.state.request_config = {"user_session": token}
+
+
+async def authenticated_session(
+    claims: Annotated[str, Depends(auth_handler)],
+) -> JWTClaimsPayload:
+    """
+    Dependency to get the authenticated user's claims.
+    This is used to ensure that the user is authenticated for certain endpoints.
+    """
+    session_manager = SessionManager()
+    session_data = session_manager.get_session_from_token(claims)
+    if session_data is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired session",
+        )
+    try:
+        return session_manager.jwt_generator.decode_token(
+            session_data.session_token, verify_exp=True
+        )
+    except ValueError as e:
+        log_error(f"Error decoding token: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired session",
+        )
 
 
 _request_context = ContextVar("request_context", default=None)

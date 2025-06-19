@@ -1,4 +1,6 @@
 import os
+
+os.environ["AWS_ENDPOINT_URL"] = ""
 from collections.abc import Generator
 from typing import Any, AsyncGenerator, Dict
 from unittest.mock import patch
@@ -19,7 +21,6 @@ from ehp.db.db_manager import DBManager
 from ehp.db.sqlalchemy_async_connector import Base
 from ehp.tests.utils.mocks import MockRedisClient
 from ehp.tests.utils.test_client import EHPTestClient
-from ehp.tests.utils.mocks import MockRedisClient
 
 
 # Override environment settings for testing when needed
@@ -66,14 +67,18 @@ async def test_engine():
 @pytest.fixture(scope="function")
 async def test_db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     """Get a test session that's rolled back after the test."""
-    async_session = sessionmaker(
-        test_engine, expire_on_commit=False, class_=AsyncSession
-    )
 
-    async with async_session() as session:
-        async with session.begin():
-            yield session
-            await session.rollback()
+    async with test_engine.connect() as connection:
+        asyncsession = sessionmaker(
+            connection,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+        await connection.run_sync(Base.metadata.create_all)
+        async with asyncsession() as session:
+            async with session.begin():
+                yield session
+                await session.rollback()
 
 
 @pytest.fixture
@@ -88,8 +93,9 @@ async def test_db_manager(test_db_session) -> AsyncGenerator[DBManager, None]:
         return test_db_session
 
     db_manager.get_session = mock_get_session
-
-    yield db_manager
+    with patch("ehp.db.sqlalchemy_async_connector.async_session_factory") as mock_get_db_session:
+        mock_get_db_session.return_value = test_db_session
+        yield db_manager
 
     # Restore original method
     db_manager.get_session = original_get_session
@@ -175,7 +181,7 @@ def aws_mock():
 
 
 @pytest.fixture
-@patch("redis.Redis", MockRedisClient)
+@patch("ehp.base.session.get_redis_client", MockRedisClient)
 def setup_jwt(aws_mock: AWSClient):
     """
     Fixture to set up JWT generator with mocked AWS secrets.

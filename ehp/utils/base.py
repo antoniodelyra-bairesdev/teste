@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import random
 import string
 import sys
@@ -10,11 +11,11 @@ from datetime import datetime
 from typing import Any, List
 
 _logger = logging.getLogger(__name__)
-
+_is_in_test = "PYTEST_VERSION" in os.environ
 
 def log_error(error: Any) -> None:
     _logger.error(f"{datetime.now()} ::: {str(error)}")
-    if sys.exc_info()[0]:
+    if sys.exc_info()[0] and not _is_in_test:
         traceback.print_exc()
 
 

@@ -12,6 +12,8 @@ from ehp.config import settings
 
 
 ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
 
 engine = create_async_engine(
     settings.SQLALCHEMY_ASYNC_DATABASE_URI,
@@ -19,7 +21,7 @@ engine = create_async_engine(
     max_overflow=50,
     pool_pre_ping=True,
     pool_recycle=300,
-    connect_args={"ssl": ssl_context},
+    # connect_args={"ssl": ssl_context},
 )
 
 async_session_factory = async_sessionmaker(

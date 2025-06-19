@@ -11,7 +11,7 @@ from ehp.base.session import SessionData
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
+
 async def test_get_user_session_with_token(aws_mock: AWSClient):
     """Test get_user_session with a valid token."""
     # Mock request
@@ -41,7 +41,7 @@ async def test_get_user_session_with_token(aws_mock: AWSClient):
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
+
 async def test_get_user_session_no_token(aws_mock: AWSClient):
     """Test get_user_session with no token."""
     # Mock request
@@ -61,7 +61,7 @@ async def test_get_user_session_no_token(aws_mock: AWSClient):
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
+
 async def test_get_user_session_no_request_config(aws_mock: AWSClient):
     """Test get_user_session when request_config doesn't exist."""
     # Mock request
@@ -112,7 +112,7 @@ def test_get_current_request():
 
 @pytest.mark.skip(reason="Test is currently not applicable")
 @pytest.mark.unit
-@pytest.mark.asyncio
+
 async def test_request_middleware(test_client: TestClient):
     """Test RequestMiddleware dispatch method."""
     middleware = RequestMiddleware(test_client.app)
@@ -144,7 +144,7 @@ async def test_request_middleware(test_client: TestClient):
 
 @pytest.mark.skip(reason="Test is currently not applicable")
 @pytest.mark.unit
-@pytest.mark.asyncio
+
 async def test_request_middleware_with_exception(test_client: TestClient):
     """Test RequestMiddleware dispatch method when call_next raises an exception."""
     middleware = RequestMiddleware(test_client.app)

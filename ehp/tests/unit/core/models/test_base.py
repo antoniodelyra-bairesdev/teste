@@ -26,7 +26,7 @@ class MockModel(BaseModel):
 @pytest.mark.unit
 class TestBaseModel:
 
-    @pytest.mark.asyncio
+    
     async def test_to_dict(self):
         """Test that to_dict serializes model attributes correctly."""
         # Create model instance
@@ -49,7 +49,7 @@ class TestBaseModel:
         assert result["amount"] == "123.45"
         assert result["status"] == "1"
 
-    @pytest.mark.asyncio
+    
     async def test_serialize(self):
         """Test that serialize is an alias for to_dict."""
         model = MockModel()
@@ -64,7 +64,7 @@ class TestBaseModel:
         mock_to_dict.assert_called_once()
         assert result == {"id": 1, "name": "Test Model"}
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.skip(reason="No to_json method in current BaseModel implementation")
     async def test_to_json(self):
         """Test that to_json converts model to JSON-compatible dict."""
@@ -87,7 +87,7 @@ class TestBaseModel:
             == '{"id": 1, "name": "Test Model", "description": null, "created_at": "2023-01-01T12:00:00", "amount": null, "status": null, "active": null}'
         )
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.skip(reason="not compatible with current BaseModel implementation")
     async def test_get_db_manager(self, test_db_manager):
         """Test that get_db_manager returns the DBManager from request."""
@@ -101,7 +101,7 @@ class TestBaseModel:
             result = await MockModel.get_db_manager()
             assert result == test_db_manager
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.skip(reason="not compatible with current BaseModel implementation")
     async def test_exists(self, test_db_session):
         """Test that exists checks if a model exists by ID."""
@@ -128,7 +128,7 @@ class TestBaseModel:
             result = await MockModel.exists(None)
             assert result is False
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.skip(reason="No get_db_manager in current BaseModel implementation")
     async def test_get_by_id(self, test_db_session):
         """Test that get_by_id retrieves a model by ID."""
@@ -161,7 +161,7 @@ class TestBaseModel:
             result = await MockModel.get_by_id(None)
             assert result is None
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.skip(reason="No get_db_manager in current BaseModel implementation")
     async def test_list(self, test_db_session):
         """Test that list retrieves all model instances."""
@@ -187,7 +187,7 @@ class TestBaseModel:
             assert result[0] == model1
             assert result[1] == model2
 
-    @pytest.mark.asyncio
+    
     @pytest.mark.skip(reason="No get_db_manager in current BaseModel implementation")
     async def test_obj_delete(self, test_db_session):
         """Test that obj_delete deletes a model instance by ID."""

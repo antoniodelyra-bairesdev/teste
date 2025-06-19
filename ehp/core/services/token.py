@@ -1,19 +1,20 @@
 from datetime import datetime
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
-from ehp.base.dependencies import DBContext
 from ehp.base.jwt_helper import TokenPayload
 from ehp.base.session import SessionManager
 from ehp.config.ehp_core import settings
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.models.schema.token import TokenRequestData
 from ehp.core.repositories.authentication import AuthenticationRepository
+from ehp.db.sqlalchemy_async_connector import get_db_session
 from ehp.utils.authentication import check_password
 from ehp.utils.base import log_error, log_info
-from ehp.utils.constants import AUTH_ACTIVE, AUTH_CONFIRMED
+from ehp.utils.constants import AUTH_ACTIVE
 
 router = APIRouter(
     tags=["Authentication"], responses={404: {"description": "Not found"}}
@@ -57,7 +58,8 @@ async def _count_failures(
 
 @router.post("/token", status_code=status.HTTP_200_OK, response_model_by_alias=False)
 async def login_for_access_token(
-    token_data: TokenRequestData, session: DBContext
+    token_data: TokenRequestData,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> TokenPayload:
     """
     OAuth 2.0 Password Grant Flow - Authenticate User and Generate JWT
@@ -155,12 +157,13 @@ async def login_for_access_token(
             detail="Account is deactivated",
         )
 
-    if user.is_confirmed != AUTH_CONFIRMED:
-        log_error(f"Account is not confirmed for user {user.id} - {user.user_email}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account is not confirmed",
-        )
+    # Commented out for now, but can be used if account confirmation is required
+    # if user.is_confirmed != AUTH_CONFIRMED:
+    #     log_error(f"Account is not confirmed for user {user.id} - {user.user_email}")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_401_UNAUTHORIZED,
+    #         detail="Account is not confirmed",
+    #     )
 
     # Verify password (with hash)
     if not check_password(user.user_pwd, password):

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -13,7 +14,6 @@ from ehp.utils.constants import (
 
 
 class Authentication(BaseModel):
-
     __tablename__ = "authentication"
     __table_args__ = {"extend_existing": True}
 
@@ -33,21 +33,27 @@ class Authentication(BaseModel):
     is_confirmed: Mapped[str] = mapped_column(
         "auth_st_confirmed", String(1), default=AUTH_CONFIRMED, nullable=False
     )
-    confirmation: Mapped[datetime] = mapped_column("auth_dt_confirmation", DateTime)
+    confirmation: Mapped[datetime] = mapped_column(
+        "auth_dt_confirmation", DateTime, nullable=True
+    )
     accept_terms: Mapped[str] = mapped_column(
         "auth_st_accept_terms", String(1), default=AUTH_ACCEPT_TERMS, nullable=False
     )
     reset_password: Mapped[str] = mapped_column(
         "auth_st_reset_password", String(1), default=AUTH_RESET_PASSWORD, nullable=False
     )
-    reset_token = Column("auth_tx_reset_token", String(255), nullable=True)
-    reset_token_expires = Column("auth_dt_reset_token_expires", DateTime, nullable=True)
+    reset_token: Mapped[str] = mapped_column(
+        "auth_tx_reset_token", String(255), nullable=True
+    )
+    reset_token_expires: Mapped[datetime] = mapped_column(
+        "auth_dt_reset_token_expires", DateTime, nullable=True
+    )
     user = relationship(
         "User", uselist=False, back_populates="authentication", lazy=False
     )
 
     profile_id: Mapped[int] = mapped_column(
-        "prof_cd_id", Integer, ForeignKey("profile.prof_cd_id")
+        "prof_cd_id", Integer, ForeignKey("profile.prof_cd_id"), nullable=True
     )
     profile = relationship("Profile", uselist=False, lazy=False)
 
@@ -57,3 +63,10 @@ class Authentication(BaseModel):
     last_login_attempt: Mapped[datetime] = mapped_column(
         "auth_dt_last_login_attempt", DateTime, default=datetime.now, nullable=False
     )
+
+    if TYPE_CHECKING:
+        from ehp.core.models.db.profile import Profile
+        from ehp.core.models.db.user import User
+
+        user: Mapped[User]
+        profile: Mapped[Profile]

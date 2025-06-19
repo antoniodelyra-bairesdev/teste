@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -9,8 +9,6 @@ from ehp.base.redis_storage import get_redis_client
 from ehp.tests.utils.test_client import EHPTestClient
 from ehp.utils.authentication import hash_password
 from ehp.utils.base import base64_encrypt
-from ehp.utils.authentication import hash_password
-from ehp.tests.utils.test_client import EHPTestClient
 
 
 @pytest.mark.end_to_end
@@ -210,7 +208,7 @@ def test_request_password_reset_flow(app: FastAPI):
     # Mock the repository update method and ensure email is mocked
     with patch("ehp.core.repositories.authentication.AuthenticationRepository.update") as mock_update, \
          patch("ehp.core.repositories.authentication.AuthenticationRepository.get_by_email") as mock_get_by_email, \
-         patch("ehp.utils.email.send_html_mail") as mock_send_html_mail:
+         patch("ehp.utils.email.send_mail") as mock_send_html_mail:
         
         # Configure mocks (email is already mocked by EHPTestClient)
         mock_get_by_email.return_value = mock_auth
@@ -345,7 +343,7 @@ def test_register_and_login_flow(app: FastAPI):
     auth_email_patch, auth_username_patch, mock_auth_login = client.setup_authentication(login_user_data)
 
     # Create a mock TokenPayload for the session
-    mock_token_payload = MagicMock()
+    mock_token_payload = TokenPayload(access_token="mock_token", refresh_token=None, token_type="bearer", expires_at=600)
     mock_token_payload.access_token = "mock-token-12345"
 
     # Mock the entire SessionManager class
@@ -363,7 +361,7 @@ def test_register_and_login_flow(app: FastAPI):
     mock_db_manager_instance.transaction.return_value = MockAsyncContextManager()
 
     with patch("ehp.core.services.token.SessionManager", return_value=mock_session_manager), \
-         patch("ehp.core.services.token.DBManager", return_value=mock_db_manager_instance):
+         patch("ehp.db.DBManager", return_value=mock_db_manager_instance):
 
         auth_email_patch.start()
         auth_username_patch.start()

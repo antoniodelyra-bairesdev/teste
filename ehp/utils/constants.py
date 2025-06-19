@@ -117,3 +117,8 @@ AUTH_NOT_CONFIRMED: str = "0"
 AUTH_RESET_PASSWORD: str = "1"
 AUTH_ACCEPT_TERMS: str = "1"
 AUTH_NOT_ACCEPT_TERMS: str = "0"
+
+PROFILE_IDS: Dict[str, int] = {
+    "admin": 1,
+    "user": 2,
+}

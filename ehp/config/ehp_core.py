@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     APP_LOG_NAME: str = os.environ["APP_LOG_NAME"]
     DEBUG: bool = os.environ["DEBUG"] == "True"
 
+    APP_URL: str = os.environ.get("APP_URL", "http://localhost:17000")
+
     DATABASE_URL: str = os.environ["DATABASE_URL"]
     DATABASE_PORT: int = int(os.environ["DATABASE_PORT"])
     POSTGRES_DB: str = os.environ["POSTGRES_DB"]

@@ -25,7 +25,6 @@ async def register(
     registration_param: RegistrationSchema,
     session: AsyncSession = Depends(get_session),
 ) -> JSONResponse:
-    from ehp.core.repositories.authentication import AuthenticationRepository
 
     response_json: Dict[str, Any] = const.ERROR_JSON
 
@@ -40,14 +39,13 @@ async def register(
             return JSONResponse(
                 content={"error": "An account with this email already exists"},
                 status_code=422,
-                status_code=422,
             )
 
         log_info(f"Creating new user with email: {registration_param.user_email}")
 
         # Get default profile (assuming there's a default one, or you can hardcode an ID)
         # You might want to adjust this based on your business logic
-        default_profile = await session.get(Profile, 1)  # Assuming profile ID 1 exists
+        # default_profile = await session.get(Profile, 1)  # Assuming profile ID 1 exists
 
         # Create new authentication record
         new_auth = Authentication(
@@ -55,16 +53,14 @@ async def register(
             user_email=registration_param.user_email,
             user_pwd=hash_password(registration_param.user_password),
             is_active=const.AUTH_ACTIVE,
-            is_confirmed=const.AUTH_NOT_CONFIRMED,  # Needs email confirmation
+            is_confirmed=const.AUTH_CONFIRMED,  # Needs email confirmation
             accept_terms=const.AUTH_ACCEPT_TERMS,
-            profile_id=default_profile.id if default_profile else None,
-            profile_id=default_profile.id if default_profile else None,
+            profile_id=const.PROFILE_IDS.get("user"),  # Default profile ID for users
         )
 
         created_auth = await auth_repo.create(new_auth)
         log_info(f"Created authentication record for user: {created_auth.user_email}")
         # Create associated user record
-        new_user = User(full_name=registration_param.user_name, auth_id=created_auth.id)
         new_user = User(full_name=registration_param.user_name, auth_id=created_auth.id)
 
         session.add(new_user)
@@ -77,13 +73,11 @@ async def register(
 
         # Remove sensitive data from response
         auth_data.pop("user_pwd", None)
-        auth_data.pop("user_pwd", None)
 
         response_json = {
             "code": 200,
             "message": "User registered successfully",
             "auth": auth_data,
-            "user": user_data,
             "user": user_data,
         }
 
@@ -102,21 +96,15 @@ async def register(
         # Return user-friendly error messages
         if "password" in field_name.lower():
             if "characters" in error_msg:
-        if "password" in field_name.lower():
-            if "characters" in error_msg:
                 user_msg = "Password must be at least 8 characters long"
             elif "uppercase" in error_msg:
-            elif "uppercase" in error_msg:
                 user_msg = "Password must contain at least one uppercase letter"
-            elif "lowercase" in error_msg:
             elif "lowercase" in error_msg:
                 user_msg = "Password must contain at least one lowercase letter"
             else:
                 user_msg = "Password must be at least 8 characters with uppercase and lowercase letters"
         elif "email" in field_name.lower():
-        elif "email" in field_name.lower():
             user_msg = "Please enter a valid email address"
-        elif "name" in field_name.lower():
         elif "name" in field_name.lower():
             user_msg = "Name is required"
         else:

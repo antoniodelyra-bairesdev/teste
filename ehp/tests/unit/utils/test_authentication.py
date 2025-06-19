@@ -60,10 +60,10 @@ class TestPasswordHashing:
         """Test that different passwords produce different hashes."""
         password1 = "password123"
         password2 = "different456"
-        
+
         hash1 = hash_password(password1)
         hash2 = hash_password(password2)
-        
+
         assert hash1 != hash2
         assert check_password(hash1, password1)
         assert check_password(hash2, password2)
@@ -73,10 +73,10 @@ class TestPasswordHashing:
     def test_hash_password_same_input_different_salts(self):
         """Test that same password produces different hashes due to salt."""
         password = "samepassword"
-        
+
         hash1 = hash_password(password)
         hash2 = hash_password(password)
-        
+
         # Different salts should produce different hashes
         assert hash1 != hash2
         # But both should verify correctly
@@ -91,9 +91,9 @@ class TestPasswordHashing:
             "密码123",
             "password with spaces",
             "very_long_password_with_many_characters_12345",
-            "!@#$%^&*()_+-={}[]|\\:;\"'<>,.?/`~"
+            "!@#$%^&*()_+-={}[]|\\:;\"'<>,.?/`~",
         ]
-        
+
         for password in complex_passwords:
             hashed = hash_password(password)
             assert hashed is not None
@@ -118,7 +118,7 @@ class TestPasswordHashing:
         """Test that hash_password works with whitespace-only passwords."""
         whitespace_password = "   "
         hashed = hash_password(whitespace_password)
-        
+
         assert hashed is not None
         assert check_password(hashed, whitespace_password)
 
@@ -126,7 +126,7 @@ class TestPasswordHashing:
         """Test that hash uses scrypt method as expected."""
         password = "testpassword"
         hashed = hash_password(password)
-        
+
         # Scrypt hashes start with $scrypt$
         assert hashed.startswith("scrypt:")
 
@@ -142,7 +142,7 @@ class TestPasswordHashing:
         """Test that password checking is case sensitive."""
         password = "TestPassword"
         hashed = hash_password(password)
-        
+
         assert check_password(hashed, "TestPassword")
         assert not check_password(hashed, "testpassword")
         assert not check_password(hashed, "TESTPASSWORD")
@@ -151,17 +151,17 @@ class TestPasswordHashing:
         """Test check_password with edge cases."""
         password = "validpassword"
         hashed = hash_password(password)
-        
+
         # Empty strings
         assert not check_password(hashed, "")
         assert not check_password("", password)
         assert not check_password("", "")
-        
+
         # None values
         assert not check_password(None, password)
         assert not check_password(hashed, None)
         assert not check_password(None, None)
-        
+
         # Invalid hash format
         assert not check_password("invalid_hash", password)
 
@@ -173,34 +173,40 @@ class TestPasswordHashing:
             "password123 ",
             " password123",
             "Password123",
-            "password1234"
+            "password1234",
         ]
-        
+
         hashed = hash_password(base_password)
-        
+
         for similar_pwd in similar_passwords:
-            assert not check_password(hashed, similar_pwd), f"False positive for: {similar_pwd}"
+            assert not check_password(hashed, similar_pwd), (
+                f"False positive for: {similar_pwd}"
+            )
 
     def test_password_hashing_performance(self):
         """Test that password hashing completes in reasonable time."""
         import time
-        
+
         password = "performance_test_password"
-        
+
         start_time = time.time()
         hashed = hash_password(password)
         end_time = time.time()
-        
+
         # Should complete within 1 second (scrypt is intentionally slow but not too slow)
         assert (end_time - start_time) < 1.0
         assert check_password(hashed, password)
 
     def test_hash_length_consistency(self):
         """Test that hashes have consistent length format."""
-        passwords = ["short", "medium_length_password", "very_very_long_password_with_many_characters"]
-        
+        passwords = [
+            "short",
+            "medium_length_password",
+            "very_very_long_password_with_many_characters",
+        ]
+
         hashes = [hash_password(pwd) for pwd in passwords]
-        
+
         # All hashes should be strings and have reasonable length
         for hashed in hashes:
             assert isinstance(hashed, str)
@@ -214,14 +220,14 @@ class TestPasswordHashing:
             "Password123",
             "SecurePass1",
             "MyStr0ngPassword",
-            "ComplexP4ssword!"
+            "ComplexP4ssword!",
         ]
-        
+
         for password in valid_registration_passwords:
             hashed = hash_password(password)
             assert hashed is not None
             assert check_password(hashed, password)
-            
+
             # Verify it doesn't match similar invalid passwords
             assert not check_password(hashed, password.lower())
             assert not check_password(hashed, password.upper())
@@ -265,7 +271,10 @@ def test_check_password():
 def test_is_valid_token(aws_mock: AWSClient):
     """Test that is_valid_token validates tokens correctly."""
     # Mock the get_from_redis_session function
-    with patch("ehp.base.session.SessionManager.get_session_from_token") as mock_get:
+    with (
+        patch("ehp.base.session.SessionManager.get_session_from_token") as mock_get,
+        patch("ehp.utils.authentication.log_error") as mock_log_error,
+    ):
         # Valid token
         aws_mock.secretsmanager_client.create_secret(
             Name=JWT_SECRET_NAME, SecretString="test-secret"
@@ -283,8 +292,10 @@ def test_is_valid_token(aws_mock: AWSClient):
         assert not is_valid_token("invalid-token")
 
         # Exception case
-        mock_get.side_effect = Exception("Redis error")
+        exc = Exception("Redis error")
+        mock_get.side_effect = exc
         assert not is_valid_token("error-token")
+        mock_log_error.assert_called_once_with(exc)
 
 
 @pytest.mark.unit
