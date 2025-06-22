@@ -14,7 +14,7 @@ class WikiClip(BaseModel):
     id = Column("wiki_cd_id", Integer, primary_key=True)
     title = Column("wiki_tx_title", String(500), nullable=False)
     content = Column("wiki_tx_content", Text, nullable=False)
-    url = Column("wiki_tx_url", String(2000), nullable=False, unique=True)
+    url = Column("wiki_tx_url", String(2000), nullable=False)
     related_links = Column("wiki_js_related_links", JSON, nullable=True)
     created_at = Column(
         "wiki_dt_created_at",

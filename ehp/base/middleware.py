@@ -4,7 +4,7 @@ import uuid
 from contextvars import ContextVar
 from typing import Annotated, Optional
 
-from fastapi import Depends, Header, HTTPException, Request, Response
+from fastapi import Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -17,24 +17,8 @@ from ehp.utils.base import log_error
 auth_handler = APIKeyHeader(name="x-token-auth", auto_error=True)
 
 
-async def get_user_session(
-    request: Request, x_token_auth: Annotated[Optional[str], Header()] = None
-) -> None:
-    session_manager = SessionManager()
-    if x_token_auth:
-        token = session_manager.get_session_from_token(x_token_auth)
-        if token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid X-Token-Auth header",
-            )
-        if hasattr(request.state, "request_config"):
-            request.state.request_config["user_session"] = token
-        else:
-            request.state.request_config = {"user_session": token}
 
-
-async def authenticated_session(
+def authenticated_session(
     claims: Annotated[str, Depends(auth_handler)],
 ) -> JWTClaimsPayload:
     """
@@ -42,13 +26,15 @@ async def authenticated_session(
     This is used to ensure that the user is authenticated for certain endpoints.
     """
     session_manager = SessionManager()
-    session_data = session_manager.get_session_from_token(claims)
-    if session_data is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired session",
-        )
     try:
+        session_data = session_manager.get_session_from_token(token=claims)
+        if session_data is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired session",
+            )
+        # Exp needs to be checked here because the get_session_from_token call does
+        # not check for expiration
         return session_manager.jwt_generator.decode_token(
             session_data.session_token, verify_exp=True
         )

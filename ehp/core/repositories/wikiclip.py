@@ -45,7 +45,8 @@ class WikiClipRepository(BaseRepository[WikiClip]):
             )
         except Exception as e:
             log_error(
-                f"Error checking if WikiClip exists for URL {url}, date {date}, title {title}: {e}"
+                "Error checking if WikiClip exists for URL "
+                + f"{url}, date {date}, title {title} and {user_id}: {e}"
             )
             return False
         else:

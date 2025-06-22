@@ -4,8 +4,8 @@ import pytest
 from fastapi import Depends, FastAPI
 
 from ehp.base.jwt_helper import JWTGenerator, TokenPayload
-from ehp.base.middleware import get_user_session
 from ehp.base.redis_storage import get_redis_client
+from ehp.core.services.session import get_authentication
 from ehp.tests.utils.test_client import EHPTestClient
 from ehp.utils.authentication import hash_password
 from ehp.utils.base import base64_encrypt
@@ -22,7 +22,7 @@ def test_auth_and_logout_flow(test_client: EHPTestClient):
     4. User is denied access to protected endpoint
     """
 
-    @test_client.app.get("/mock", dependencies=[Depends(get_user_session)])
+    @test_client.app.get("/mock", dependencies=[Depends(get_authentication)])
     def mock_endpoint():
         """
         Mock endpoint to test authentication.
@@ -52,9 +52,14 @@ def test_auth_and_logout_flow(test_client: EHPTestClient):
     auth_email_patch, auth_username_patch, mock_auth = test_client.setup_authentication(
         user_data
     )
+    auth_by_id_patch = patch(
+        "ehp.core.repositories.AuthenticationRepository.get_by_id",
+        return_value=mock_auth
+    )
 
     # Start patches
     auth_email_patch.start()
+    auth_by_id_patch.start()
     auth_username_patch.start()
 
     # Step 1: User authenticates
@@ -89,12 +94,13 @@ def test_auth_and_logout_flow(test_client: EHPTestClient):
 
     # User is denied access to protected endpoint
     protected_response = test_client.get("/mock", include_auth=True)
-    assert protected_response.status_code == 400
-    assert "Invalid X-Token-Auth header" in protected_response.json()["detail"]
+    assert protected_response.status_code == 401
+    assert "Invalid or expired session" in protected_response.json()["detail"]
 
     # Stop patches
     auth_email_patch.stop()
     auth_username_patch.stop()
+    auth_by_id_patch.stop()
 
 
 @pytest.mark.skip(reason="This is not implemented yet.")
