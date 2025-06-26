@@ -89,6 +89,8 @@ def build_pytest_cmd(
     ignore_collection_errors: bool,
     term_missing: bool,
     maxfail: Optional[int] = None,
+    html: bool = False,
+    html_dir: Optional[str] = None,
 ) -> str:
     cmd_parts = ["pytest"]
     if cwd:
@@ -114,6 +116,10 @@ def build_pytest_cmd(
         cmd_parts.append("--continue-on-collection-errors")
     if maxfail is not None:
         cmd_parts.append(f"--maxfail={maxfail}")
+    if html:
+        if html_dir is None:
+            html_dir = "htmlcov"
+        cmd_parts.append(f"--cov-report html:{html_dir}")
 
     cmd = " ".join(cmd_parts)
     return cmd
@@ -126,6 +132,13 @@ def build_pytest_cmd(
         "no-coverage": "If specified, test coverage will not be calculated.",
         "verbose": "If specified, run the tests with additional logging info.",
         "term-missing": "If specified, show missing lines in coverage report.",
+        "pdb": "If specified, run tests with pdb enabled.",
+        "no-capture": "If specified, show stdout/stderr during test runs.",
+        "run-in-docker": "If specified, run tests in a Docker container.",
+        "ignore-collection-errors": "If specified, pytest will continue on collection errors.",
+        "maxfail": "If specified, stop testing after this many failures.",
+        "html": "If specified, generate an HTML report in 'htmlcov' directory.",
+        "html-dir": "Directory to save the HTML report (default: 'htmlcov').",
     }
 )
 def pytest(
@@ -140,6 +153,8 @@ def pytest(
     ignore_collection_errors: bool = True,
     term_missing: bool = False,
     maxfail: Optional[int] = None,
+    html: bool = False,
+    html_dir: Optional[str] = None,
 ) -> None:
     """Run unit tests using pytest."""
     cmd = build_pytest_cmd(
@@ -153,6 +168,8 @@ def pytest(
         ignore_collection_errors,
         term_missing,
         maxfail,
+        html,
+        html_dir,
     )
     run_command(ctx, cmd, run_in_docker)
 

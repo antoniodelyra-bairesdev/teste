@@ -98,7 +98,7 @@ async def run_async_migrations() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
         # The key line for SSL: pass the SSL context to asyncpg
-        connect_args={"ssl": "disable"},
+        connect_args={"ssl": ssl_context},
     )
 
     async with connectable.connect() as connection:

@@ -25,15 +25,12 @@ from ehp.utils.authentication import needs_api_key
 
 logger = logging.getLogger(__name__)
 
-
 app = FastAPI(
     title=settings.APP_NAME,
     description=settings.APP_DESCRIPTION,
     version=settings.APP_VERSION,
     dependencies=[Depends(needs_api_key), Depends(get_db_manager)],
 )
-
-
 
 origins = [
     "http://localhost",
@@ -57,7 +54,6 @@ app.include_router(registration_router)
 app.include_router(root_router)
 app.include_router(token_router)
 app.include_router(wikiclip_router)
-
 
 
 @app.get("/openapi.json")
