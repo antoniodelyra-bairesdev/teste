@@ -72,6 +72,7 @@ def test_auth_and_logout_flow(test_client: EHPTestClient):
         },
     )
 
+
     assert login_response.status_code == 200
     # Should return a valid token_payload
     session_token = TokenPayload.model_validate_json(login_response.text)

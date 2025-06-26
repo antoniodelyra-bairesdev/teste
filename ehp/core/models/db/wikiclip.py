@@ -1,5 +1,6 @@
-from sqlalchemy import JSON, TIMESTAMP, Column, ForeignKey, Integer, String, Text
+from sqlalchemy import TIMESTAMP, ForeignKey, Integer, String, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from datetime import datetime
 
 from ehp.core.models.db.base import BaseModel
 from ehp.utils.date_utils import timezone_now
@@ -9,14 +10,21 @@ from .wikiclip_tag import wikiclip_tag
 
 class WikiClip(BaseModel):
     __tablename__ = "wikiclip"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        UniqueConstraint(
+            'wiki_tx_url',
+            'wiki_tx_title', 
+            'wiki_dt_created_at',
+            name='uq_wikiclip_url_title_created'
+        ),
+    )
 
-    id = Column("wiki_cd_id", Integer, primary_key=True)
-    title = Column("wiki_tx_title", String(500), nullable=False)
-    content = Column("wiki_tx_content", Text, nullable=False)
-    url = Column("wiki_tx_url", String(2000), nullable=False)
-    related_links = Column("wiki_js_related_links", JSON, nullable=True)
-    created_at = Column(
+    id: Mapped[int] = mapped_column("wiki_cd_id", Integer, primary_key=True)
+    title: Mapped[str] = mapped_column("wiki_tx_title", String(500), nullable=False)
+    content: Mapped[str] = mapped_column("wiki_tx_content", Text, nullable=False)
+    url: Mapped[str] = mapped_column("wiki_tx_url", String(2000), nullable=False)
+    related_links: Mapped[dict | list | None] = mapped_column("wiki_js_related_links", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         "wiki_dt_created_at",
         TIMESTAMP(timezone=True),
         default=timezone_now,

@@ -1,8 +1,8 @@
 from asyncio import Task, TaskGroup, current_task
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Dict, Optional
+from typing import Annotated, AsyncGenerator, Dict, Optional
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.engine import Result
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_scoped_session
@@ -57,7 +57,7 @@ class DBManager:
             self._transaction_stack[session_id] = []
 
         try:
-            if not self._transaction_stack[session_id]:
+            if not self._transaction_stack[session_id] and not session.in_transaction():
                 # No active transaction, start a new one
                 async with session.begin():
                     self._transaction_stack[session_id].append(session)
@@ -169,6 +169,18 @@ class DBManager:
             except Exception as e:
                 print(f"Error cleaning up session: {e}")
 
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Get a new database session for the current request."""
+    db_manager = DBManager()
+    session = db_manager.get_session()
+    try:
+        yield session
+    except Exception as e:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        await session.close()
+        del db_manager._active_sessions[id(session)]
 
 async def get_simple_db_manager() -> AsyncGenerator[DBManager, None]:
     db_manager = DBManager()
@@ -186,6 +198,23 @@ async def get_db_manager() -> AsyncGenerator[DBManager, None]:
     finally:
         await db_manager.cleanup()
 
+async def get_managed_session(db_manager: DBManager = Depends(get_db_manager)) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Get a managed session from the provided DBManager.
+    This session will be automatically cleaned up after use.
+    """
+    session = db_manager.get_session()
+    try:
+        if not session.in_transaction():
+            async with session.begin():
+                yield session
+        else:
+            yield session
+    except SQLAlchemyError as e:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+ManagedAsyncSession = Annotated[AsyncSession, Depends(get_managed_session)]
 
 def set_db_manager_in_request_config(db_manager: DBManager) -> None:
     # TODO: Avoid circular import, take a look at this later.

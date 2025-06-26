@@ -1,14 +1,14 @@
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic_core._pydantic_core import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ehp.base.dependencies import get_session
-from ehp.core.models.db import Authentication, Profile, User
+from ehp.core.models.db import Authentication, User
 from ehp.core.models.schema import RegistrationSchema
 from ehp.core.repositories.authentication import AuthenticationRepository
+from ehp.core.repositories.base import BaseRepository
+from ehp.db.db_manager import ManagedAsyncSession
 from ehp.utils import constants as const
 from ehp.utils import hash_password, make_response
 from ehp.utils.base import (
@@ -23,7 +23,7 @@ router = APIRouter(responses={404: {"description": "Not found"}})
 async def register(
     request: Request,
     registration_param: RegistrationSchema,
-    session: AsyncSession = Depends(get_session),
+    session: ManagedAsyncSession,
 ) -> JSONResponse:
 
     response_json: Dict[str, Any] = const.ERROR_JSON
@@ -62,9 +62,8 @@ async def register(
         log_info(f"Created authentication record for user: {created_auth.user_email}")
         # Create associated user record
         new_user = User(full_name=registration_param.user_name, auth_id=created_auth.id)
-
-        session.add(new_user)
-        await session.flush()
+        user_repository = BaseRepository(session, User)
+        await user_repository.create(new_user)
 
         # Prepare response data
         log_info(f"User created successfully: {new_user.full_name} ({new_user.id})")

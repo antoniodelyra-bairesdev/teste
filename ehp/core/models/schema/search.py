@@ -11,3 +11,4 @@ class SearchSchema(PageModel):
 class IndexSchema(PageModel):
     index_type: str
     clean_index: bool = False
+

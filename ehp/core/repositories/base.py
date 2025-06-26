@@ -60,7 +60,7 @@ class BaseRepository(Repository[T], Generic[T]):
     async def create(self, entity: T) -> T:
         try:
             self.session.add(entity)
-            await self.session.flush()
+            await self.session.flush([entity])
             return entity
         except Exception as e:
             log_error(f"Error creating {self.model.__name__}: {e}")

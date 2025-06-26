@@ -87,6 +87,10 @@ ERROR_STUDENT_DOES_NOT_EXIST: Dict[str, Any] = {
 }
 ERROR_INVALID_EMAIL: Dict[str, Any] = {"CODE": 522, "INFO": "INVALID EMAIL."}
 
+# Duplicate check constants
+DUPLICATE_FOUND: Dict[str, Any] = {"CODE": 523, "INFO": "DUPLICATE ARTICLE FOUND"}
+ERROR_INVALID_DUPLICATE_PARAMS: Dict[str, Any] = {"CODE": 525, "INFO": "INVALID DUPLICATE CHECK PARAMETERS"}
+
 ALLOWED_PHOTOS: List[str] = ["png", "jpg", "jpeg", "gif"]
 ALLOWED_DOCS_EXTENSIONS: List[str] = ["pdf", "doc", "docx", "txt"]
 
@@ -122,3 +126,8 @@ PROFILE_IDS: Dict[str, int] = {
     "admin": 1,
     "user": 2,
 }
+
+# HTTP Status Code Constants
+HTTP_NOT_FOUND = 404
+HTTP_CONFLICT = 409
+HTTP_INTERNAL_SERVER_ERROR = 500

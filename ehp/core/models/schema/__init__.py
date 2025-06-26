@@ -1,20 +1,21 @@
 from .authentication import AuthenticationSchema
+from .duplicate_check import DuplicateCheckResponseSchema
 from .logout import LogoutResponse
-from .password import PasswordResetConfirmSchema, PasswordResetResponse, PasswordSchema
-from .password import PasswordResetRequestSchema
+from .password import PasswordResetConfirmSchema, PasswordResetRequestSchema, PasswordResetResponse, PasswordSchema
 from .registration import RegistrationSchema
 from .search import IndexSchema, SearchSchema
 from .token import TokenRequestData
 
 __all__ = [
     "AuthenticationSchema",
+    "DuplicateCheckResponseSchema",
     "IndexSchema",
     "LogoutResponse",
-    "PasswordSchema",
     "PasswordResetConfirmSchema",
+    "PasswordResetRequestSchema",
     "PasswordResetResponse",
+    "PasswordSchema",
     "RegistrationSchema",
     "SearchSchema",
-    "TokenRequestData",
-    "PasswordResetRequestSchema"
+    "TokenRequestData"
 ]

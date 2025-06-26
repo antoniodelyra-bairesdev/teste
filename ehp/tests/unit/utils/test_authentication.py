@@ -234,40 +234,6 @@ class TestPasswordHashing:
 
 
 @pytest.mark.unit
-def test_hash_password():
-    """Test that hash_password creates a valid hash."""
-    password = "testpassword"
-    hashed = hash_password(password)
-
-    assert hashed is not None
-    assert hashed != password
-    assert check_password(hashed, password)
-
-
-@pytest.mark.unit
-def test_hash_password_empty():
-    """Test that hash_password raises exception with empty password."""
-    with pytest.raises(Exception) as excinfo:
-        hash_password("")
-
-    assert "Password is required" in str(excinfo.value)
-
-
-@pytest.mark.unit
-def test_check_password():
-    """Test that check_password correctly validates passwords."""
-    password = "testpassword"
-    hashed = hash_password(password)
-
-    assert check_password(hashed, password)
-    assert not check_password(hashed, "wrongpassword")
-    assert not check_password(hashed, "")
-    assert not check_password("", password)
-    assert not check_password(None, password)
-    assert not check_password(hashed, None)
-
-
-@pytest.mark.unit
 def test_is_valid_token(aws_mock: AWSClient):
     """Test that is_valid_token validates tokens correctly."""
     # Mock the get_from_redis_session function

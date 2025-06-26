@@ -1,8 +1,12 @@
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Annotated, List
 
+from fastapi import Query
 from pydantic import AfterValidator, Field, HttpUrl, field_validator
 
+from ehp.core.models.schema.paging import PagedQuery
 from ehp.utils.validation import ValidatedModel
 
 
@@ -44,6 +48,42 @@ class WikiClipResponseSchema(ValidatedModel):
 
     id: int
     title: str
-    url: str
+    url: HttpUrl  # Changed from str to HttpUrl for consistency
     related_links: List[str] | None = None
     created_at: datetime
+
+class WikiClipSearchSortStrategy(str, Enum):
+    """Enum for sorting strategies in WikiClip search."""
+    
+    CREATION_DATE_ASC = "creation_date_asc"
+    CREATION_DATE_DESC = "creation_date_desc"
+
+    def __str__(self) -> str:
+        """Return the string representation of the enum value."""
+        return self.value
+
+@dataclass
+class WikiClipSearchSchema(PagedQuery):
+    """Schema for searching WikiClips with pagination and sorting options."""
+
+    search_term: str | None = Query(
+        None,
+        description="Search term to filter WikiClips by title or content",
+        max_length=500,
+    )
+    sort_by: WikiClipSearchSortStrategy = Query(
+        WikiClipSearchSortStrategy.CREATION_DATE_DESC,
+        description="Sorting strategy for the search results",
+    )
+    created_before: datetime | None = Query(
+        None,
+        description="Filter WikiClips created before this date",
+    )
+    created_after: datetime | None = Query(
+        None,
+        description="Filter WikiClips created after this date",
+    )
+    filter_by_user: bool = Query(
+        False,
+        description="Filter WikiClips by user ID",
+    )

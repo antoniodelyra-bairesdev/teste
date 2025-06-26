@@ -91,9 +91,10 @@ async def test_db_manager(test_db_session) -> AsyncGenerator[DBManager, None]:
 
     def mock_get_session():
         return test_db_session
+    
 
     db_manager.get_session = mock_get_session
-    with patch("ehp.db.sqlalchemy_async_connector.async_session_factory") as mock_get_db_session:
+    with patch("ehp.db.DBManager.get_session") as mock_get_db_session:
         mock_get_db_session.return_value = test_db_session
         yield db_manager
 

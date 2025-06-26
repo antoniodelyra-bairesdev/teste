@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ehp.base.dependencies import get_session
 from ehp.base.jwt_helper import JWTGenerator
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.models.schema.password import (
@@ -15,13 +14,11 @@ from ehp.core.models.schema.password import (
     PasswordResetResponse,
 )
 from ehp.core.repositories.authentication import AuthenticationRepository
-from ehp.db.db_manager import DBManager
-from ehp.utils import make_response, needs_api_key
+from ehp.db.db_manager import DBManager, ManagedAsyncSession
 from ehp.utils import constants as const
-from ehp.utils import hash_password
+from ehp.utils import hash_password, make_response, needs_api_key
 from ehp.utils.base import log_error
 from ehp.utils.email import send_notification
-
 
 router = APIRouter(
     dependencies=[Depends(needs_api_key)],
@@ -32,7 +29,7 @@ router = APIRouter(
 @router.post("/password-reset/request", response_class=JSONResponse)
 async def request_password_reset(
     request_data: PasswordResetRequestSchema,
-    session: AsyncSession = Depends(get_session),
+    session: ManagedAsyncSession,
 ) -> JSONResponse:
     """
     Request password reset for a user.
@@ -66,7 +63,7 @@ async def request_password_reset(
             
             # Send password reset email
             email_subject = "Password Reset Request"
-            email_body = f"You have requested a password reset. Please use the following link to reset your password."
+            email_body = "You have requested a password reset. Please use the following link to reset your password."
             
             success = send_notification(
                 email_subject,

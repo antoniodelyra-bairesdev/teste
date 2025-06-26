@@ -1,4 +1,6 @@
+import ssl
 from contextlib import asynccontextmanager
+
 from sqlalchemy import MetaData
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -6,10 +8,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import declarative_base
-import ssl
 
 from ehp.config import settings
-
 
 ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
 ssl_context.check_hostname = False
@@ -21,7 +21,7 @@ engine = create_async_engine(
     max_overflow=50,
     pool_pre_ping=True,
     pool_recycle=300,
-    # connect_args={"ssl": ssl_context},
+    connect_args={"ssl": ssl_context},
 )
 
 async_session_factory = async_sessionmaker(

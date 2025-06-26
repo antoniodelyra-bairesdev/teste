@@ -8,6 +8,7 @@ from ehp.base.jwt_helper import TokenPayload
 from ehp.config.ehp_core import settings
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.models.schema.token import TokenRequestData
+from ehp.tests.utils.test_client import EHPTestClient
 from ehp.utils.authentication import hash_password
 
 
@@ -38,7 +39,7 @@ def valid_user() -> Authentication:
 )
 @patch("ehp.base.session.SessionManager.create_session")
 @pytest.mark.usefixtures("setup_jwt")
-def test_account_lockout(
+def test_token_acquisition_success(
     mock_create_session,
     mock_get_by_email,
     mock_get_by_username,
@@ -46,12 +47,12 @@ def test_account_lockout(
     test_client: TestClient,
 ):
     # Mock session creation
-    mock_create_session.return_value = {
-        "access_token": "mocked_token_value",
-        "refresh_token": "mocked_refresh_token",
-        "token_type": "bearer",
-        "expires_at": 3600,
-    }
+    mock_create_session.return_value = TokenPayload(
+        access_token="mocked_token_value",
+        refresh_token="mocked_refresh_token",
+        token_type="bearer",
+        expires_at=3600,
+    )
     mock_get_by_email.return_value = valid_user
     mock_get_by_username.return_value = valid_user
 
@@ -166,15 +167,15 @@ def test_account_lockout(
     mock_get_by_email,
     mock_get_by_username,
     valid_user: Authentication,
-    test_client: TestClient,
+    test_client: EHPTestClient,
 ):
     # Mock session creation
-    mock_create_session.return_value = {
-        "access_token": "mocked_token_value",
-        "refresh_token": "mocked_refresh_token",
-        "token_type": "bearer",
-        "expires_at": 3600,
-    }
+    mock_create_session.return_value = TokenPayload(
+        access_token="mocked_token_value",
+        refresh_token="mocked_refresh_token",
+        token_type="bearer",
+        expires_at=3600,
+    )
     mock_get_by_email.return_value = valid_user
     mock_get_by_username.return_value = valid_user
 
@@ -190,7 +191,8 @@ def test_account_lockout(
         )
         data = response.json()
         detail = data.get("detail", {})
-        assert response.status_code == 401
+
+        assert response.status_code == 401, (response, data, idx)
         assert detail["detail"] == "Invalid credentials"
         assert detail["retry_count"] == idx + 1
         assert detail["left_attempts"] == settings.LOGIN_ERROR_MAX_RETRY - (idx + 1)

@@ -46,6 +46,7 @@ class Settings(BaseSettings):
         "pool_timeout": POOL_TIMEOUT,
     }
     ITEMS_PER_PAGE: int = 20
+    MAX_ITEMS_PER_PAGE: int = 200
     DEFAULT_LANGUAGE: str = os.environ.get("DEFAULT_LANGUAGE", "en_US")
     DEPLOYED_AT: str = str(datetime.now())
 

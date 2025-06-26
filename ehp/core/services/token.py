@@ -1,8 +1,7 @@
 from datetime import datetime
-from typing import Annotated, NoReturn
+from typing import NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException
 from starlette import status
 
 from ehp.base.jwt_helper import TokenPayload
@@ -11,7 +10,7 @@ from ehp.config.ehp_core import settings
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.models.schema.token import TokenRequestData
 from ehp.core.repositories.authentication import AuthenticationRepository
-from ehp.db.sqlalchemy_async_connector import get_db_session
+from ehp.db.db_manager import ManagedAsyncSession
 from ehp.utils.authentication import check_password
 from ehp.utils.base import log_error, log_info
 from ehp.utils.constants import AUTH_ACTIVE
@@ -59,7 +58,7 @@ async def _count_failures(
 @router.post("/token", status_code=status.HTTP_200_OK, response_model_by_alias=False)
 async def login_for_access_token(
     token_data: TokenRequestData,
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    session: ManagedAsyncSession,
 ) -> TokenPayload:
     """
     OAuth 2.0 Password Grant Flow - Authenticate User and Generate JWT

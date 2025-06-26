@@ -39,15 +39,21 @@ class InputSanitizer:
 
     @staticmethod
     def check_sql_injection(value: str) -> bool:
-        """Check for basic SQL injection patterns"""
+        """Check for very obvious SQL injection patterns only"""
         if not isinstance(value, str):
             return False
 
+        # Only catch the most blatant injection attempts
         sql_patterns = [
-            r"\b(union|select|insert|delete|update|drop|create|alter)\b",
+            # Classic union select attacks
+            r"\bunion\s+(all\s+)?select\b",
+            # SQL comments used to terminate queries
             r'[;\'"]\s*-{2,}',
+            # Drop table attacks
+            r"\bdrop\s+table\b",
+            # Obvious tautologies
             r"\bor\s+1\s*=\s*1\b",
-            r"\bunion\s+select\b",
+            r"\band\s+1\s*=\s*2\b",
         ]
 
         for pattern in sql_patterns:

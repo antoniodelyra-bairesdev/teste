@@ -11,6 +11,7 @@ from ehp.core.repositories.base import BaseRepository
 from ehp.core.services.session import AuthContext
 from ehp.db.db_manager import DBManager
 from ehp.tests.utils.test_client import EHPTestClient
+from ehp.utils.authentication import hash_password
 from ehp.utils.constants import AUTH_INACTIVE
 from ehp.utils.date_utils import timezone_now
 
@@ -31,7 +32,7 @@ async def mock_authentication(
         id=123,
         user_name="mockuser",
         user_email="mock@example.com",
-        user_pwd="hashedpassword",  # Simulating a pre-hashed password
+        user_pwd=hash_password("testpassword"),  # Using actual hash_password utility
         is_active="1",
         is_confirmed="1",
         retry_count=0,
