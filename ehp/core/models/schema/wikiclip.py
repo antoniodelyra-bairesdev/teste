@@ -51,6 +51,8 @@ class WikiClipResponseSchema(ValidatedModel):
     url: HttpUrl  # Changed from str to HttpUrl for consistency
     related_links: List[str] | None = None
     created_at: datetime
+    content: str | None = None
+
 
 class WikiClipSearchSortStrategy(str, Enum):
     """Enum for sorting strategies in WikiClip search."""

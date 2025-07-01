@@ -70,6 +70,7 @@ async def save_wikiclip(
             url=created_wikiclip.url,
             related_links=created_wikiclip.related_links,
             created_at=created_wikiclip.created_at,
+            content=created_wikiclip.content,
         )
 
     except HTTPException:
@@ -220,6 +221,7 @@ async def get_wikiclip(
             url=wikiclip.url,
             related_links=wikiclip.related_links,
             created_at=wikiclip.created_at,
+            content=wikiclip.content,
         )
 
     except HTTPException:
@@ -243,7 +245,6 @@ async def fetch_wikiclips(
         repository = WikiClipRepository(db_session)
         total_count = await repository.count(user.user.id, search)
         wikiclips = await repository.search(user.user.id, search)
-
         return PagedResponse[WikiClipResponseSchema, WikiClipSearchSchema](
             data=[
                 WikiClipResponseSchema(

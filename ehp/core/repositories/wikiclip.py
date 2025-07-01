@@ -59,9 +59,10 @@ class WikiClipRepository(BaseRepository[WikiClip]):
             return exists_result
 
     def apply_filters(
-        self, query: SelectT, search: WikiClipSearchSchema, user_id: int
+        self, query: SelectT, search: WikiClipSearchSchema, user_id: int, apply_order: bool = True
     ) -> SelectT:
         """Apply filters to the query based on search parameters."""
+        query = query.where(WikiClip.user_id == user_id)
         if search.search_term:
             query = query.where(
                 or_(
@@ -73,8 +74,8 @@ class WikiClipRepository(BaseRepository[WikiClip]):
             query = query.where(WikiClip.created_at <= search.created_before)
         if search.created_after:
             query = query.where(WikiClip.created_at >= search.created_after)
-        if search.filter_by_user:
-            query = query.where(WikiClip.user_id == user_id)
+        if not apply_order:
+            return query
         if search.sort_by is WikiClipSearchSortStrategy.CREATION_DATE_ASC:
             query = query.order_by(WikiClip.created_at.asc())
         elif search.sort_by is WikiClipSearchSortStrategy.CREATION_DATE_DESC:
@@ -99,9 +100,8 @@ class WikiClipRepository(BaseRepository[WikiClip]):
     async def count(self, user_id: int, search: WikiClipSearchSchema) -> int:
         """Count WikiClips based on user ID and search parameters."""
         try:
-            query = select(func.count(WikiClip.id.distinct()))
-            query = self.apply_filters(query, search, user_id)
-
+            query = select(func.count(WikiClip.id))
+            query = self.apply_filters(query, search, user_id, apply_order=False)
             result = await self.session.execute(query)
             return result.scalar_one()
         except Exception as e:
