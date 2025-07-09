@@ -41,3 +41,4 @@ vulture
 werkzeug
 boto3-stubs[secretsmanager]
 moto[secretsmanager]
+fakeredis

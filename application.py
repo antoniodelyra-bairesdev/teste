@@ -10,6 +10,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from starlette.responses import JSONResponse
 
+from ehp.base.exceptions import default_error_handler
 from ehp.base.middleware import RequestMiddleware
 from ehp.config import settings
 from ehp.core.services import (
@@ -18,6 +19,7 @@ from ehp.core.services import (
     registration_router,
     root_router,
     token_router,
+    user_router,
     wikiclip_router,
 )
 from ehp.db.db_manager import get_db_manager
@@ -31,6 +33,8 @@ app = FastAPI(
     version=settings.APP_VERSION,
     dependencies=[Depends(needs_api_key), Depends(get_db_manager)],
 )
+
+app.add_exception_handler(500, default_error_handler)
 
 origins = [
     "http://localhost",
@@ -53,7 +57,9 @@ app.include_router(password_router)
 app.include_router(registration_router)
 app.include_router(root_router)
 app.include_router(token_router)
+app.include_router(user_router)
 app.include_router(wikiclip_router)
+app.include_router(user_router)
 
 
 @app.get("/openapi.json")
