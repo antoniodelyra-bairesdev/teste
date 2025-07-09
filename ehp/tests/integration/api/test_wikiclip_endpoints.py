@@ -34,7 +34,7 @@ class TestWikiClipEndpoints:
         test_db_manager: DBManager,
     ):
         auth_repository = AuthenticationRepository(
-            test_db_manager.get_session(), Authentication
+            test_db_manager.get_session()
         )
         user_repository = BaseRepository(test_db_manager.get_session(), User)
         await auth_repository.create(self.authentication)
@@ -55,7 +55,7 @@ class TestWikiClipEndpoints:
             id=123,
             user_name="mockuser",
             user_email="mock@example.com",
-            user_pwd=hash_password("testpassword"),  # Using hash_password utility
+            user_pwd=hash_password("Te$tPassword123"),  # Using hash_password utility
             is_active="1",
             is_confirmed="1",
             retry_count=0,

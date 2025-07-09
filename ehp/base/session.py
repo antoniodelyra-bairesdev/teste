@@ -1,10 +1,9 @@
 from typing import Any, Dict, cast
 
 import redis
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from ehp.base.jwt_helper import JWTGenerator, TokenPayload
+from ehp.base.jwt_helper import JWTClaimsPayload, JWTGenerator, TokenPayload
 from ehp.base.redis_storage import get_redis_client
 from ehp.config import settings
 
@@ -43,19 +42,29 @@ class SessionManager:
         data = SessionData(
             session_id=session_id, session_token=token_payload.access_token, metadata={}
         )
-        self._save_session(session_id, data)
+        self._save_session(user_id, session_id, data)
         return token_payload
+
+    def _get_claims(self, token: str) -> JWTClaimsPayload:
+        """
+        Decode the JWT token to get the claims.
+        This is used internally to extract user_id and other claims.
+        """
+        return self.jwt_generator.decode_token(token, verify_exp=True)
 
     def _get_id_from_token(self, token: str) -> str:
         claims = self.jwt_generator.decode_token(token, verify_exp=False)
         return claims["jti"]
 
-    def _save_session(self, session_id: str, session_data: SessionData) -> None:
+    def _save_session(
+        self, user_id: str, session_id: str, session_data: SessionData
+    ) -> None:
         """
         Save the session data to Redis.
         """
-        self.redis_client.set(session_id, session_data.model_dump_json())
-        self.redis_client.expire(session_id, settings.SESSION_TIMEOUT)
+        _ = self.redis_client.set(session_id, session_data.model_dump_json())
+        _ = self.redis_client.hset(user_id, session_id, session_data.session_token)
+        _ = self.redis_client.expire(session_id, settings.SESSION_TIMEOUT)
 
     def get_session_from_token(self, token: str) -> SessionData | None:
         """
@@ -68,7 +77,7 @@ class SessionManager:
     def get_session(self, session_id: str) -> SessionData | None:
         session_data_json = cast(str, self.redis_client.get(session_id))
         if session_data_json:
-            self.redis_client.expire(session_id, settings.SESSION_TIMEOUT)
+            _ = self.redis_client.expire(session_id, settings.SESSION_TIMEOUT)
             return SessionData.model_validate_json(session_data_json)
         else:
             return None
@@ -77,24 +86,23 @@ class SessionManager:
         """
         Remove the session data from Redis using the token.
         """
-        session_id = self._get_id_from_token(token)
-        self.remove_session(session_id)
+        claims = self._get_claims(token)
+        user_id = claims["sub"]
+        session_id = claims["jti"]
+        self.remove_session(user_id, session_id)
 
-    def remove_session(self, session_id: str) -> None:
+    def remove_session(self, user_id: str, session_id: str) -> None:
         """
         Remove the session data from Redis using the session_id.
         """
-        self.redis_client.delete(session_id)
+        _ = self.redis_client.delete(session_id)
+        _ = self.redis_client.hdel(user_id, session_id)
 
-
-def redirect_to(
-    path: Any, status_code: int = 200, headers: Dict[str, Any] = {}
-) -> RedirectResponse:
-    return RedirectResponse(
-        url=path,
-        status_code=status_code,
-        headers={
-            "x-api-key": settings.API_KEY_VALUE,
-            **headers,
-        },
-    )
+    def wipe_sessions(self, user_id: str) -> None:
+        """
+        Wipe all sessions for a given user_id.
+        """
+        session_ids = cast(Dict[str, Any], self.redis_client.hgetall(user_id))
+        for session_id in session_ids:
+            _ = self.redis_client.delete(session_id)
+        _ = self.redis_client.delete(user_id)

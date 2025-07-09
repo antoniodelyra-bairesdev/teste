@@ -15,7 +15,7 @@ class TestRegistrationEndpoints:
         return {
             "user_name": "Test User",
             "user_email": "test@example.com",
-            "user_password": "SecurePass123"
+            "user_password": "SecurePa$s123"
         }
 
     class TestRegisterEndpoint:
@@ -180,7 +180,7 @@ class TestRegistrationEndpoints:
             invalid_data = {
                 "user_name": "Test User",
                 "user_email": "test@example.com",
-                "user_password": "SecurePass123"
+                "user_password": "SecurePa$s123"
             }
             response = test_client.post("/register", json=invalid_data)
             assert response.status_code == 200

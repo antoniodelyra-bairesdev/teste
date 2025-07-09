@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import field_validator
 
 from ehp.utils.validation import ValidatedModel
-from ehp.core.models.schema.registration import RegistrationSchema
+from ehp.core.models.schema.registration import check_password_strength
 
 
 class PasswordSchema(ValidatedModel):
@@ -18,7 +18,7 @@ class PasswordSchema(ValidatedModel):
 
     @field_validator("reset_code")
     @classmethod
-    def validate_reset_code(cls, v):
+    def validate_reset_code(cls, v: str):
         if v and not re.match(r"^\d{4}$", v):
             raise ValueError("Reset code must be 4 digits")
         return v
@@ -32,14 +32,14 @@ class PasswordResetConfirmSchema(ValidatedModel):
 
     @field_validator("new_password")
     @classmethod
-    def validate_password(cls, v):
+    def validate_password(cls, v: str):
         """
         Validates the password according to the policy:
         - At least 8 characters
         - At least one uppercase letter
         - At least one lowercase letter
         """
-        return RegistrationSchema.validate_password(v)
+        return check_password_strength(v)
 
 
 class PasswordResetResponse(ValidatedModel):
@@ -51,10 +51,13 @@ class PasswordResetResponse(ValidatedModel):
 
 class PasswordResetRequestSchema(ValidatedModel):
     """Password reset request model"""
+
     user_email: str
 
     @field_validator("user_email")
-    def validate_email(cls, v):
-        if not v or not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", v):
+    def validate_email(cls, v: str):
+        if not v or not re.match(
+            r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", v
+        ):
             raise ValueError("Valid email address is required")
         return v.lower()

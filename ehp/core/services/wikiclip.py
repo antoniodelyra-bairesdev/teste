@@ -1,8 +1,6 @@
-from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ehp.core.models.db.wikiclip import WikiClip
 from ehp.core.models.schema.paging import PagedResponse
@@ -16,7 +14,6 @@ from ehp.core.repositories.wikiclip import WikiClipRepository
 from ehp.core.services.session import AuthContext, get_authentication
 from ehp.db.db_manager import ManagedAsyncSession
 from ehp.utils.base import log_error
-from ehp.db.sqlalchemy_async_connector import get_db_session
 from ehp.utils.constants import HTTP_INTERNAL_SERVER_ERROR
 
 
@@ -33,25 +30,6 @@ async def save_wikiclip(
 
     try:
         repository = WikiClipRepository(db_session)
-
-        # We are not checking for duplicates anymore here, we are doing it in the duplicate check endpoint
-        # today = date.today()
-        # # Check if URL already exists
-        # if await repository.exists(
-        #     str(wikiclip_data.url),
-        #     today,
-        #     wikiclip_data.title,
-        #     user.user.id,
-        # ):
-        #     log_error(
-        #         f"WikiClip with parameters {wikiclip_data.url},"
-        #         + f" {today} and {wikiclip_data.title} already exists"
-        #     )
-        #     raise HTTPException(
-        #         status_code=409, detail="A WikiClip with this URL already exists"
-        #     )
-
-        # Create new WikiClip
         wikiclip = WikiClip(
             title=wikiclip_data.title,
             content=wikiclip_data.content,
@@ -79,7 +57,9 @@ async def save_wikiclip(
     except Exception as e:
         await db_session.rollback()
         log_error(f"Error saving WikiClip: {e}")
-        raise HTTPException(status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Internal server error")
+        raise HTTPException(
+            status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Internal server error"
+        )
 
 
 @router.get(
@@ -160,13 +140,15 @@ async def duplicate_check_endpoint(
     """
     try:
         repository = WikiClipRepository(db_session)
-        is_duplicate, duplicate_article, hours_difference = (
-            await repository.check_duplicate(
-                url=str(url),
-                title=title,
-                user_id=user.user.id,
-                hours_threshold=hours_threshold,
-            )
+        (
+            is_duplicate,
+            duplicate_article,
+            hours_difference,
+        ) = await repository.check_duplicate(
+            url=str(url),
+            title=title,
+            user_id=user.user.id,
+            hours_threshold=hours_threshold,
         )
         if is_duplicate:
             return DuplicateCheckResponseSchema(
@@ -198,7 +180,6 @@ async def duplicate_check_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
         )
-        raise HTTPException(status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Could not save WikiClip due to an error")
 
 
 @router.get(
@@ -229,7 +210,8 @@ async def get_wikiclip(
     except Exception as e:
         log_error(f"Error getting WikiClip {wikiclip_id}: {e}")
         raise HTTPException(
-            status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Could not retrieve WikiClip due to an error"
+            status_code=HTTP_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve WikiClip due to an error",
         )
 
 
@@ -265,7 +247,8 @@ async def fetch_wikiclips(
     except Exception as e:
         log_error(f"Error fetching WikiClips: {e}")
         raise HTTPException(
-            status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Could not fetch WikiClips due to an error"
+            status_code=HTTP_INTERNAL_SERVER_ERROR,
+            detail="Could not fetch WikiClips due to an error",
         )
 
 
@@ -275,7 +258,8 @@ async def fetch_wikiclips(
     response_class=Response,
 )
 async def get_wikiclip_content(
-    wikiclip_id: int, db_session: Annotated[AsyncSession, Depends(get_db_session)]
+    wikiclip_id: int,
+    db_session: ManagedAsyncSession,
 ) -> Response:
     """Content fetch endpoint."""
 
@@ -286,11 +270,13 @@ async def get_wikiclip_content(
         return Response(
             content=wikiclip.content,
             media_type="text/plain",
-            headers={"Content-Type": "text/plain; charset=utf-8"}
+            headers={"Content-Type": "text/plain; charset=utf-8"},
         )
 
     except HTTPException:
         raise
     except Exception as e:
         log_error(f"Error getting WikiClip content {wikiclip_id}: {e}")
-        raise HTTPException(status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Internal server error")
+        raise HTTPException(
+            status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Internal server error"
+        )

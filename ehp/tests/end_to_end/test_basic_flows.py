@@ -31,7 +31,7 @@ def test_auth_and_logout_flow(test_client: EHPTestClient):
         return {"message": "This is a protected endpoint"}
 
     # Setup authentication mocks
-    user_pwd_hash = hash_password("testpassword")
+    user_pwd_hash = hash_password("Te$tPassword123")
     user_data = {
         "id": 1,
         "user_name": "testuser",
@@ -68,7 +68,7 @@ def test_auth_and_logout_flow(test_client: EHPTestClient):
         json={
             "user_name": "testuser",
             "username": "test@example.com",
-            "password": "testpassword",
+            "password": "Te$tPassword123",
         },
     )
 
@@ -324,7 +324,7 @@ def test_register_and_login_flow(app: FastAPI):
         registration_data = {
             "user_name": "Test User",
             "user_email": "test@example.com",
-            "user_password": "TestPassword123"
+            "user_password": "TestPa$sword123"
         }
 
         register_response = client.post("/register", json=registration_data)

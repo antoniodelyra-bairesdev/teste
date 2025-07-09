@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -22,7 +22,7 @@ async def test_confirm_password_reset_success():
         id=123,
         user_name="mockuser",
         user_email="mock@example.com",
-        user_pwd=hash_password("OldPassword123"),  # Current password
+        user_pwd=hash_password("OldPa$sword123"),  # Current password
         is_active="1",
         is_confirmed="1",
         retry_count=0,
@@ -47,7 +47,7 @@ async def test_confirm_password_reset_success():
     # Create a mock PasswordResetConfirmSchema
     mock_params = PasswordResetConfirmSchema(
         token="valid_token",  # Token is mockable since we're testing logic
-        new_password="NewPassword123",
+        new_password="NewPas$word123",
     )
 
     # Call the function under test with proper mocks
@@ -62,7 +62,7 @@ async def test_confirm_password_reset_success():
     mock_repo.update.assert_called_once()
     
     # Verify that the auth object was modified correctly
-    assert check_password(mock_auth.user_pwd, "NewPassword123")
+    assert check_password(mock_auth.user_pwd, "NewPas$word123")
     assert mock_auth.reset_password == "0"
     assert mock_auth.reset_code is None
     
@@ -79,7 +79,7 @@ async def test_confirm_password_reset_invalid_token():
     
     mock_params = PasswordResetConfirmSchema(
         token="invalid_token",
-        new_password="NewPassword123"
+        new_password="NewPas$word123"
     )
 
     # Mock JWTGenerator to raise ValueError for invalid token
@@ -122,7 +122,7 @@ async def test_confirm_password_reset_inactive_reset():
     decoded = generator.decode_token(jwt_generated.access_token, verify_exp=True)
 
     mock_params = PasswordResetConfirmSchema(
-        token=jwt_generated.access_token, new_password="NewPassword123"
+        token=jwt_generated.access_token, new_password="NewPas$word123"
     )
 
     # Call the function and expect an HTTPException for inactive reset
@@ -169,7 +169,7 @@ async def test_confirm_password_reset_expired_token():
     decoded = generator.decode_token(jwt_generated.access_token, verify_exp=True)
 
     mock_params = PasswordResetConfirmSchema(
-        token=jwt_generated.access_token, new_password="NewPassword123"
+        token=jwt_generated.access_token, new_password="NewPas$word123"
     )
 
     # Call the function and expect an HTTPException for expired token
@@ -201,7 +201,7 @@ async def test_confirm_password_reset_user_not_found():
 
     mock_params = PasswordResetConfirmSchema(
         token="valid_token",
-        new_password="NewPassword123"
+        new_password="NewPas$word123"
     )
 
     with patch("ehp.base.jwt_helper.JWTGenerator.decode_token", return_value=decoded):

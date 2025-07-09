@@ -1,45 +1,10 @@
-from functools import partial
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
-from redis import Redis
+from fakeredis import FakeRedis
 
 from ehp.base.session import SessionData
 from ehp.core.models.db.authentication import Authentication
-
-
-@partial(cast, type[Redis])
-class MockRedisClient:
-    """Mock Redis client for testing."""
-
-    def __init__(self):
-        self.data = {}
-        self.expiry = {}
-
-    def get(self, key: str) -> Optional[str]:
-        """Get a value from the mock Redis storage."""
-        return self.data.get(key)
-
-    def set(self, key: str, value: str, **kwargs) -> bool:
-        """Set a value in the mock Redis storage."""
-        self.data[key] = value
-        return True
-
-    def delete(self, key: str) -> bool:
-        """Delete a value from the mock Redis storage."""
-        if key in self.data:
-            del self.data[key]
-            if key in self.expiry:
-                del self.expiry[key]
-            return True
-        return False
-
-    def expire(self, key: str, timeout: int) -> bool:
-        """Set an expiry on a value in the mock Redis storage."""
-        if key in self.data:
-            self.expiry[key] = timeout
-            return True
-        return False
 
 
 class MockElasticsearch:
@@ -134,7 +99,7 @@ class MockElasticsearch:
 # Patch functions
 def patch_redis():
     """Patch Redis client with mock implementation."""
-    mock_redis = MockRedisClient()
+    mock_redis = FakeRedis(decode_responses=True)
 
     # Patch the Redis client initialization
     redis_patch = patch("ehp.base.redis_storage.redis_client", mock_redis)
@@ -179,7 +144,7 @@ def setup_mock_authentication(db_session, user_data=None):
             "id": 1,
             "user_name": "testuser",
             "user_email": "test@example.com",
-            "user_pwd": hash_password("testpassword"),
+            "user_pwd": hash_password("Te$tPassword123"),
             "is_active": "1",
             "is_confirmed": "1",
             "profile_id": 1,
@@ -199,11 +164,13 @@ def setup_mock_authentication(db_session, user_data=None):
 
     # Patch Authentication.get_by_email and Authentication.get_by_user_name
     auth_email_patch = patch(
-        "ehp.core.repositories.authentication.AuthenticationRepository.get_by_email", return_value=mock_auth
+        "ehp.core.repositories.authentication.AuthenticationRepository.get_by_email",
+        return_value=mock_auth,
     )
 
     auth_username_patch = patch(
-        "ehp.core.repositories.authentication.AuthenticationRepository.get_by_username", return_value=mock_auth
+        "ehp.core.repositories.authentication.AuthenticationRepository.get_by_username",
+        return_value=mock_auth,
     )
 
     return auth_email_patch, auth_username_patch, mock_auth

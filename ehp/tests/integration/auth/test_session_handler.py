@@ -32,7 +32,7 @@ async def mock_authentication(
         id=123,
         user_name="mockuser",
         user_email="mock@example.com",
-        user_pwd=hash_password("testpassword"),  # Using actual hash_password utility
+        user_pwd=hash_password("Te$tPassword123"),  # Using actual hash_password utility
         is_active="1",
         is_confirmed="1",
         retry_count=0,
@@ -44,7 +44,7 @@ async def mock_authentication(
         auth_id=authentication.id,
     )
     auth_repository = AuthenticationRepository(
-        test_db_manager.get_session(), Authentication
+        test_db_manager.get_session()
     )
     user_repository = BaseRepository(test_db_manager.get_session(), User)
     await auth_repository.create(authentication)
@@ -191,7 +191,7 @@ class TestSessionDependency:
 
         # Simulate a user that does not exist
         auth_repository = AuthenticationRepository(
-            test_db_manager.get_session(), Authentication
+            test_db_manager.get_session()
         )
         await auth_repository.delete(mock_authentication.authentication.id)
         response = test_client.get("/mocked-route", include_auth=True)
@@ -217,7 +217,7 @@ class TestSessionDependency:
         # Simulate an inactive user
         mock_authentication.authentication.is_active = AUTH_INACTIVE
         auth_repository = AuthenticationRepository(
-            test_db_manager.get_session(), Authentication
+            test_db_manager.get_session()
         )
         await auth_repository.update(mock_authentication.authentication)
         response = test_client.get("/mocked-route", include_auth=True)

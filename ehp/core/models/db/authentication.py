@@ -42,10 +42,10 @@ class Authentication(BaseModel):
     reset_password: Mapped[str] = mapped_column(
         "auth_st_reset_password", String(1), default=AUTH_RESET_PASSWORD, nullable=False
     )
-    reset_token: Mapped[str] = mapped_column(
+    reset_token: Mapped[str | None] = mapped_column(
         "auth_tx_reset_token", String(255), nullable=True
     )
-    reset_token_expires: Mapped[datetime] = mapped_column(
+    reset_token_expires: Mapped[datetime | None] = mapped_column(
         "auth_dt_reset_token_expires", DateTime, nullable=True
     )
     user = relationship(

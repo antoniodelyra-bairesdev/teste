@@ -4,6 +4,8 @@ from unittest.mock import patch
 import pytest
 from fastapi import FastAPI
 
+from ehp.base.redis_storage import get_redis_client
+from ehp.base.session import SessionManager
 from ehp.config.ehp_core import settings
 from ehp.tests.utils.mocks import mock_session_data
 from ehp.tests.utils.test_client import EHPTestClient
@@ -12,12 +14,11 @@ from ehp.utils.authentication import hash_password, is_valid_token
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("setup_jwt")
-def test_authenticate_success(app: FastAPI):
+def test_authenticate_success(test_client: EHPTestClient):
     """Test successful authentication."""
-    client = EHPTestClient(app)
 
     # Setup mock authentication
-    user_pwd_hash = hash_password("testpassword")
+    user_pwd_hash = hash_password("Te$tPassword123")
     user_data = {
         "id": 1,
         "user_name": "testuser",
@@ -35,7 +36,7 @@ def test_authenticate_success(app: FastAPI):
         },
     }
 
-    auth_email_patch, auth_username_patch, mock_auth = client.setup_authentication(
+    auth_email_patch, auth_username_patch, mock_auth = test_client.setup_authentication(
         user_data
     )
 
@@ -44,23 +45,30 @@ def test_authenticate_success(app: FastAPI):
     auth_username_patch.start()
 
     # Setup session creation mock
+    redis = get_redis_client()
 
     # Make the authentication request
-    response = client.post(
+    response = test_client.post(
         "/token",
         json={
             "username": "testuser",
-            "password": "testpassword",
+            "password": "Te$tPassword123",
         },
     )
 
     # Verify response
     assert response.status_code == 200
     result = response.json()
+    session_data = SessionManager().get_session_from_token(result["access_token"])
+    assert session_data is not None
 
     # Check session token and user data
     assert "access_token" in result
     assert is_valid_token(result["access_token"])
+    assert (
+        redis.hget(str(user_data["id"]), session_data.session_id)
+        == session_data.session_token
+    )
 
     # Stop patches
     auth_email_patch.stop()
@@ -127,11 +135,15 @@ def test_authenticate_user_not_found(app: FastAPI):
     client = EHPTestClient(app)
 
     # Setup mock authentication to return None (user not found)
-    with patch(
-        "ehp.core.repositories.AuthenticationRepository.get_by_email", return_value=None
-    ), patch(
-        "ehp.core.repositories.AuthenticationRepository.get_by_username",
-        return_value=None,
+    with (
+        patch(
+            "ehp.core.repositories.AuthenticationRepository.get_by_email",
+            return_value=None,
+        ),
+        patch(
+            "ehp.core.repositories.AuthenticationRepository.get_by_username",
+            return_value=None,
+        ),
     ):
         # Make the authentication request
         response = client.post(
@@ -156,9 +168,12 @@ def test_logout_success(app: FastAPI):
     # Setup session mock
     session_data = mock_session_data()
 
-    with patch(
-        "ehp.base.session.SessionManager.create_session", return_value=session_data
-    ), patch("ehp.base.session.SessionManager.remove_session", return_value=None):
+    with (
+        patch(
+            "ehp.base.session.SessionManager.create_session", return_value=session_data
+        ),
+        patch("ehp.base.session.SessionManager.remove_session", return_value=None),
+    ):
         # Make logout request
         response = client.get("/logout", include_auth=True)
 

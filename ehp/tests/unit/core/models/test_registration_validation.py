@@ -13,13 +13,13 @@ class TestRegistrationSchemaValidation:
         valid_data = {
             "user_name": "Rob Stuart",
             "user_email": "rob.stuart@wikiclip.com",
-            "user_password": "SecurePass123"
+            "user_password": "SecurePa$s123"
         }
         registration = RegistrationSchema(**valid_data)
         
         assert registration.user_name == "Rob Stuart"
         assert registration.user_email == "rob.stuart@wikiclip.com"
-        assert registration.user_password == "SecurePass123"
+        assert registration.user_password == "SecurePa$s123"
 
     def test_email_validation_success(self):
         """Test successful email validation cases."""
@@ -35,7 +35,7 @@ class TestRegistrationSchemaValidation:
             data = {
                 "user_name": "Test User",
                 "user_email": email,
-                "user_password": "ValidPass123"
+                "user_password": "ValidPa$s123"
             }
             registration = RegistrationSchema(**data)
             assert registration.user_email == email.lower()
@@ -57,7 +57,7 @@ class TestRegistrationSchemaValidation:
             data = {
                 "user_name": "Test User",
                 "user_email": email,
-                "user_password": "ValidPass123"
+                "user_password": "ValidPa$s123"
             }
             with pytest.raises(ValidationError) as exc_info:
                 RegistrationSchema(**data)
@@ -70,7 +70,7 @@ class TestRegistrationSchemaValidation:
         data = {
             "user_name": "Test User",
             "user_email": "  USER@EXAMPLE.COM  ",
-            "user_password": "ValidPass123"
+            "user_password": "ValidPa$s123"
         }
         registration = RegistrationSchema(**data)
         assert registration.user_email == "user@example.com"
@@ -89,7 +89,7 @@ class TestRegistrationSchemaValidation:
             data = {
                 "user_name": name,
                 "user_email": "test@example.com",
-                "user_password": "ValidPass123"
+                "user_password": "ValidPa$s123"
             }
             registration = RegistrationSchema(**data)
             assert registration.user_name == name.strip()
@@ -106,7 +106,7 @@ class TestRegistrationSchemaValidation:
             data = {
                 "user_name": name,
                 "user_email": "test@example.com",
-                "user_password": "ValidPass123"
+                "user_password": "ValidPa$s123"
             }
             with pytest.raises(ValidationError) as exc_info:
                 RegistrationSchema(**data)
@@ -119,7 +119,7 @@ class TestRegistrationSchemaValidation:
         data = {
             "user_name": "  Rob Stuart  ",
             "user_email": "test@example.com",
-            "user_password": "ValidPass123"
+            "user_password": "ValidPa$s123"
         }
         registration = RegistrationSchema(**data)
         assert registration.user_name == "Rob Stuart"
@@ -127,10 +127,10 @@ class TestRegistrationSchemaValidation:
     def test_password_validation_success(self):
         """Test successful password validation cases."""
         valid_passwords = [
-            "Password123",
-            "SecurePass1",
+            "Pa$sword123",
+            "SecurePa$s1",
             "MyStr0ngP@ssw0rd",
-            "Aa12345678",
+            "Aa12345678!",
             "ComplexP4ssword!"
         ]
         

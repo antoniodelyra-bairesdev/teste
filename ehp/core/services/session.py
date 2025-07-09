@@ -29,7 +29,7 @@ async def get_authentication(
     if hasattr(request.state, "user"):
         user: Authentication = request.state.user
     else:
-        repository = AuthenticationRepository(db_session, Authentication)
+        repository = AuthenticationRepository(db_session)
         user = await repository.get_by_id(int(auth_claims["sub"]))
         if user is None:
             raise HTTPException(

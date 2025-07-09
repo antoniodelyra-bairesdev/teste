@@ -21,16 +21,15 @@ router = APIRouter(responses={404: {"description": "Not found"}})
 
 @router.post("/register", response_class=JSONResponse)
 async def register(
-    request: Request,
     registration_param: RegistrationSchema,
     session: ManagedAsyncSession,
 ) -> JSONResponse:
 
-    response_json: Dict[str, Any] = const.ERROR_JSON
+    response_json = const.ERROR_JSON
 
     try:
         log_info(f"Registering user: {registration_param.user_email}")
-        auth_repo = AuthenticationRepository(session, Authentication)
+        auth_repo = AuthenticationRepository(session)
 
         # Check if email already exists
         existing_auth = await auth_repo.get_by_email(registration_param.user_email)

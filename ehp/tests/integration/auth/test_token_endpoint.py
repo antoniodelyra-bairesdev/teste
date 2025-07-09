@@ -96,10 +96,8 @@ def test_token_invalid_credentials(test_client):
 
 @pytest.mark.integration
 @patch("ehp.core.repositories.AuthenticationRepository.get_by_email")
-@patch("ehp.base.session.SessionManager.create_session")
 @pytest.mark.usefixtures("setup_jwt")
 def test_token_deactivated_account(
-    mock_create_session,
     mock_get_by_email,
     test_client: TestClient,
     valid_user: Authentication,
@@ -108,12 +106,6 @@ def test_token_deactivated_account(
 
     valid_user.is_active = "0"  # Deactivate user
     mock_get_by_email.return_value = valid_user
-    mock_create_session.return_value = TokenPayload(
-        access_token="mocked_token_value",
-        refresh_token="mocked_refresh_token",
-        token_type="bearer",
-        expires_at=3600,
-    )
 
     response = test_client.post(
         "/token",

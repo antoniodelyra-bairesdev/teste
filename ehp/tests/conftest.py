@@ -1,5 +1,7 @@
 import os
 
+from fakeredis import FakeRedis
+
 os.environ["AWS_ENDPOINT_URL"] = ""
 from collections.abc import Generator
 from typing import Any, AsyncGenerator, Dict
@@ -19,7 +21,6 @@ from ehp.base.jwt_helper import JWT_SECRET_NAME
 from ehp.config import settings
 from ehp.db.db_manager import DBManager
 from ehp.db.sqlalchemy_async_connector import Base
-from ehp.tests.utils.mocks import MockRedisClient
 from ehp.tests.utils.test_client import EHPTestClient
 
 
@@ -105,7 +106,7 @@ async def test_db_manager(test_db_session) -> AsyncGenerator[DBManager, None]:
 # Mock Redis client
 @pytest.fixture
 def mock_redis():
-    return MockRedisClient()
+    return FakeRedis(decode_responses=True)
 
 
 # FastAPI testing client
@@ -182,12 +183,12 @@ def aws_mock():
 
 
 @pytest.fixture
-@patch("ehp.base.session.get_redis_client", MockRedisClient)
+@patch("ehp.base.session.get_redis_client", mock_redis)
 def setup_jwt(aws_mock: AWSClient):
     """
     Fixture to set up JWT generator with mocked AWS secrets.
     This can be used to test JWT generation and validation.
     """
-    aws_mock.secretsmanager_client.create_secret(
+    _ = aws_mock.secretsmanager_client.create_secret(
         Name=JWT_SECRET_NAME, SecretString=settings.SECRET_KEY
     )

@@ -1,13 +1,13 @@
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     APP_NAME: str = os.environ["APP_NAME"]
-    APP_DESCRIPTION: Optional[str] = os.environ.get("APP_DESCRIPTION")
+    APP_DESCRIPTION: str = os.environ.get("APP_DESCRIPTION", "")
     APP_VERSION: str = os.environ["APP_VERSION"]
     APP_ENCODING_ALG: str = os.environ.get("APP_ENCODING_ALG", "HS256")
     APP_ISSUER: str = os.environ["APP_ISSUER"]

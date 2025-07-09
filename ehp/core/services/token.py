@@ -98,7 +98,7 @@ async def login_for_access_token(
         )
 
     # Get DB session
-    auth_repo = AuthenticationRepository(session, Authentication)
+    auth_repo = AuthenticationRepository(session)
 
     # Try by email, fallback to username
     log_info(f"Attempting to retrieve user by email: {username}")

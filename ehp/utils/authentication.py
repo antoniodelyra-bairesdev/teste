@@ -18,10 +18,10 @@ async def needs_token_auth(x_token_auth: Annotated[Optional[str], Header()]) -> 
         raise HTTPException(status_code=400, detail="Invalid X-Token-Auth header.")
 
 
-def hash_password(pwd: str) -> Optional[str]:
+def hash_password(pwd: str) -> str:
     if not pwd:
         raise Exception("Password is required")
-    return cast(str, generate_password_hash(pwd, method="scrypt", salt_length=8))
+    return generate_password_hash(pwd, method="scrypt", salt_length=8)
 
 
 def check_password(pwd_db: str, pwd_form: str) -> bool:
