@@ -10,12 +10,13 @@ from ehp.utils.base import log_error
 
 class AuthNotFoundException(Exception):
     """Exception raised when an authentication record is not found."""
+
     pass
 
 
 class AuthenticationRepository(BaseRepository[Authentication]):
     """Authentication repository with specific methods."""
-    
+
     def __init__(self, session: AsyncSession):
         super().__init__(session, Authentication)
 
@@ -38,7 +39,7 @@ class AuthenticationRepository(BaseRepository[Authentication]):
         except Exception as e:
             log_error(f"Error getting auth by username {username}: {e}")
             return None
-    
+
     async def update_password(self, auth_id: int, new_password_hash: str) -> bool:
         """Update user's password."""
         try:
@@ -52,3 +53,14 @@ class AuthenticationRepository(BaseRepository[Authentication]):
             await self.session.rollback()
             log_error(f"Error updating password for auth_id {auth_id}: {e}")
             return False
+
+    async def get_by_email_change_token(self, token: str) -> Optional[Authentication]:
+        """Get authentication record by email change token."""
+        if not token:
+            return None
+        try:
+            query = select(self.model).where(self.model.email_change_token == token)
+            return await self.session.scalar(query)
+        except Exception as e:
+            log_error(f"Error getting auth by email change token: {e}")
+            return None

@@ -1,16 +1,15 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from ehp.core.models.db.base import BaseModel
 from ehp.utils.constants import (
     AUTH_ACCEPT_TERMS,
     AUTH_ACTIVE,
     AUTH_CONFIRMED,
     AUTH_RESET_PASSWORD,
 )
+from ehp.core.models.db.base import BaseModel
+from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
 class Authentication(BaseModel):
@@ -19,9 +18,7 @@ class Authentication(BaseModel):
 
     id: Mapped[int] = mapped_column("auth_cd_id", Integer, primary_key=True)
     user_name: Mapped[str] = mapped_column("auth_tx_name", String(150), nullable=False)
-    user_email: Mapped[str] = mapped_column(
-        "auth_tx_email", String(300), nullable=False
-    )
+    user_email: Mapped[str] = mapped_column("auth_tx_email", String(300), nullable=False)
     user_pwd: Mapped[str] = mapped_column("auth_tx_pwd", String(200), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -48,6 +45,18 @@ class Authentication(BaseModel):
     reset_token_expires: Mapped[datetime | None] = mapped_column(
         "auth_dt_reset_token_expires", DateTime, nullable=True
     )
+
+    # Email change fields
+    pending_email: Mapped[str | None] = mapped_column(
+        "auth_tx_pending_email", String(300), nullable=True
+    )
+    email_change_token: Mapped[str | None] = mapped_column(
+        "auth_tx_email_change_token", String(255), nullable=True
+    )
+    email_change_token_expires: Mapped[datetime | None] = mapped_column(
+        "auth_dt_email_change_token_expires", DateTime, nullable=True
+    )
+
     user = relationship(
         "User", uselist=False, back_populates="authentication", lazy=False
     )

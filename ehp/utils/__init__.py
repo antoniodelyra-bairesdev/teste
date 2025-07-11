@@ -18,10 +18,12 @@ from .date_utils import (
     str_year,
 )
 from .request import make_response
+from .cache import cache_response
 
 
 __all__ = [
     "Base64EncoderDecoder",
+    "cache_response",
     "check_es_key",
     "check_password",
     "date_to_str",

@@ -1,11 +1,12 @@
 from datetime import date, datetime, timedelta
-from typing import Optional, TypeVar, Tuple
+from typing import List, Optional, TypeVar, Tuple
 
 from fastapi import HTTPException
 from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ehp.core.models.db.wikiclip import WikiClip
+from ehp.core.models.schema.paging import PagedQuery
 from ehp.core.models.schema.wikiclip import (
     WikiClipSearchSchema,
     WikiClipSearchSortStrategy,
@@ -31,7 +32,9 @@ class WikiClipRepository(BaseRepository[WikiClip]):
             raise HTTPException(status_code=HTTP_NOT_FOUND, detail="WikiClip not found")
         return wikiclip
 
-    async def exists(self, url: str, created_at: date, title: str, user_id: int) -> bool:
+    async def exists(
+        self, url: str, created_at: date, title: str, user_id: int
+    ) -> bool:
         try:
             statement = select(
                 exists().where(
@@ -59,7 +62,11 @@ class WikiClipRepository(BaseRepository[WikiClip]):
             return exists_result
 
     def apply_filters(
-        self, query: SelectT, search: WikiClipSearchSchema, user_id: int, apply_order: bool = True
+        self,
+        query: SelectT,
+        search: WikiClipSearchSchema,
+        user_id: int,
+        apply_order: bool = True,
     ) -> SelectT:
         """Apply filters to the query based on search parameters."""
         query = query.where(WikiClip.user_id == user_id)
@@ -84,7 +91,7 @@ class WikiClipRepository(BaseRepository[WikiClip]):
 
     async def search(
         self, user_id: int, search: WikiClipSearchSchema
-    ) -> list[WikiClip]:
+    ) -> List[WikiClip]:
         """Search for WikiClips based on user ID and search parameters."""
         try:
             query = select(WikiClip)
@@ -107,6 +114,28 @@ class WikiClipRepository(BaseRepository[WikiClip]):
         except Exception as e:
             log_error(f"Error counting WikiClips: {e}")
             return 0
+
+    async def count_suggested(self, user_id: int) -> int:
+        try:
+            statement = select(func.count(WikiClip.id)).where(
+                WikiClip.user_id == user_id
+            )
+            result = await self.session.execute(statement)
+            return result.scalar_one()
+        except Exception:
+            log_error(f"Error counting suggested wikiclips for user: {user_id}")
+            return 0
+
+    async def get_suggested(self, user_id: int, search: PagedQuery) -> List[WikiClip]:
+        try:
+            query = select(WikiClip).where(WikiClip.user_id == user_id)
+            result = await self.session.execute(
+                query.limit(search.size).offset((search.page - 1) * search.size)
+            )
+            return list(result.scalars().unique().all())
+        except Exception as e:
+            log_error(f"Error searching WikiClips: {e}")
+            return []
 
     async def check_duplicate(
         self, url: str, title: str, user_id: int, hours_threshold: int = 24
@@ -160,3 +189,57 @@ class WikiClipRepository(BaseRepository[WikiClip]):
         except Exception as e:
             log_error(f"Error checking duplicate for URL {url}, title {title}: {e}")
             return False, None, None
+
+    async def get_user_pages(self, user_id: int, page: int = 1, page_size: int = 20) -> list[WikiClip]:
+        """Get user's saved pages with metadata, ordered by creation date desc."""
+        try:
+            offset = (page - 1) * page_size
+            query = (
+                select(WikiClip)
+                .where(WikiClip.user_id == user_id)
+                .order_by(WikiClip.created_at.desc())
+                .limit(page_size)
+                .offset(offset)
+            )
+            result = await self.session.execute(query)
+            return list(result.scalars().unique().all())
+        except Exception as e:
+            log_error(f"Error fetching user pages for user {user_id}: {e}")
+            return []
+
+    async def count_user_pages(self, user_id: int) -> int:
+        """Count total saved pages for a specific user."""
+        try:
+            query = select(func.count(WikiClip.id)).where(WikiClip.user_id == user_id)
+            result = await self.session.execute(query)
+            return result.scalar_one()
+        except Exception as e:
+            log_error(f"Error counting user pages for user {user_id}: {e}")
+            return 0
+
+    async def get_trending(self, user_id: int, page: int = 1, page_size: int = 5) -> list[WikiClip]:
+        """Get trending WikiClips for a specific user ordered by publication date (created_at) descending."""
+        try:
+            offset = (page - 1) * page_size
+            query = (
+                select(WikiClip)
+                .where(WikiClip.user_id == user_id)
+                .order_by(WikiClip.created_at.desc())
+                .limit(page_size)
+                .offset(offset)
+            )
+            result = await self.session.execute(query)
+            return list(result.scalars().unique().all())
+        except Exception as e:
+            log_error(f"Error fetching trending WikiClips for user {user_id}: {e}")
+            return []
+
+    async def count_trending(self, user_id: int) -> int:
+        """Count total trending WikiClips for a specific user."""
+        try:
+            query = select(func.count(WikiClip.id)).where(WikiClip.user_id == user_id)
+            result = await self.session.execute(query)
+            return result.scalar_one()
+        except Exception as e:
+            log_error(f"Error counting trending WikiClips for user {user_id}: {e}")
+            return 0

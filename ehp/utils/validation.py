@@ -168,3 +168,10 @@ def validate_and_sanitize(model_class: BaseModel = None):
         return validation_result["sanitized_data"]
 
     return validate_request
+
+
+def summarize_text(content: str, max_length: int, ellipsis: str = "...") -> str:
+    """Summarize a given text to a specified maximum length."""
+    if len(content) <= max_length:
+        return content
+    return content[: max_length - len(ellipsis)] + ellipsis

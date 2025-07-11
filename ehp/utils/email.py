@@ -31,7 +31,7 @@ def send_mail(subject: str, body: str, recipients: List[str]) -> bool:
 
     # Set the "From" header with a friendly name
     msg["From"] = formataddr(
-        (str(Header(settings.APP_NAME, "utf-8")), settings.EMAIL_SENDER)
+        (str(Header(settings.EMAIL_NAME, "utf-8")), settings.EMAIL_SENDER)
     )
 
     # Join the list of recipients into a single comma-separated string for the 'To' header
@@ -67,8 +67,9 @@ def send_mail(subject: str, body: str, recipients: List[str]) -> bool:
 
 def send_notification(subject: str, description: str, emails: List[str]) -> bool:
     try:
-        send_mail(subject, description, emails)
+        result = send_mail(subject, description, emails)
     except Exception as e:
         log_error(e)
         return False
-    return True
+    else:
+        return result

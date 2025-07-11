@@ -1,4 +1,5 @@
 from mypy_boto3_secretsmanager.client import SecretsManagerClient
+from mypy_boto3_s3.client import S3Client
 
 
 from dataclasses import dataclass
@@ -23,5 +24,15 @@ class AWSClient:
             aws_secret_access_key=self.secret_access_key,
             region_name=self.region_name,
             service_name="secretsmanager",
+            endpoint_url=self.endpoint_url if self.endpoint_url else None,
+        )
+
+    @cached_property
+    def s3_client(self) -> S3Client:
+        return boto3.Session().client(
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+            region_name=self.region_name,
+            service_name="s3",
             endpoint_url=self.endpoint_url if self.endpoint_url else None,
         )

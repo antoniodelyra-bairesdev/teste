@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
     AWS_REGION_NAME: str = os.environ.get("AWS_REGION_NAME", "us-east-1")
     AWS_ENDPOINT_URL: str = os.environ.get("AWS_ENDPOINT_URL", "")
+    AWS_S3_BUCKET: str = os.environ.get("AWS_S3_BUCKET", "ehp-bucket")
 
     LOGIN_ERROR_TIMEOUT: int = int(os.environ.get("LOGIN_ERROR_TIMEOUT", 60))
     LOGIN_ERROR_MAX_RETRY: int = int(os.environ.get("LOGIN_ERROR_MAX_RETRY", 5))

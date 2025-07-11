@@ -13,11 +13,11 @@ from ehp.core.models.schema.password import (
     PasswordResetResponse,
 )
 from ehp.core.repositories.authentication import AuthenticationRepository
+from ehp.core.services.email import UserMailer
 from ehp.db.db_manager import DBManager, ManagedAsyncSession
 from ehp.utils import constants as const
 from ehp.utils import hash_password, make_response, needs_api_key
 from ehp.utils.base import log_error
-from ehp.utils.email import send_notification
 
 router = APIRouter(
     dependencies=[Depends(needs_api_key)],
@@ -48,7 +48,7 @@ async def request_password_reset(
         
         # Find user by email
         auth = await auth_repo.get_by_email(request_data.user_email)
-        
+
         if not auth:
             # For security, don't reveal if email exists or not
             response_json = const.SUCCESS_JSON
@@ -58,22 +58,25 @@ async def request_password_reset(
             
             # Set token expiration (30 minutes from now)
             expiration_time = datetime.now() + timedelta(minutes=30)
-            
+
             # Update authentication record with reset token and expiration
             auth.reset_token = reset_token
             auth.reset_token_expires = expiration_time
             auth.reset_password = const.AUTH_RESET_PASSWORD
-            
+
             await auth_repo.update(auth)
-            
+
             # Send password reset email
             email_subject = "Password Reset Request"
             email_body = "You have requested a password reset. Please use the following link to reset your password."
-            
-            success = send_notification(
+
+            mailer = UserMailer(auth.user)
+            success = mailer.send_mail(
                 email_subject,
                 email_body,
                 [auth.user_email],
+                force=True, # Force send even if user has email notifications disabled
+                include_self=False,
             )
 
             if success:

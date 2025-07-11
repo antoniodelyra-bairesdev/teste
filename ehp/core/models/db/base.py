@@ -6,7 +6,6 @@ import uuid
 
 from ehp.db import Base
 
-
 def _serialize_value(value: Any) -> Any:
     """Serialize different types of values"""
     if value is None:

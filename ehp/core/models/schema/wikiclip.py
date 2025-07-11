@@ -7,7 +7,10 @@ from fastapi import Query
 from pydantic import AfterValidator, Field, HttpUrl, field_validator
 
 from ehp.core.models.schema.paging import PagedQuery
-from ehp.utils.validation import ValidatedModel
+from ehp.utils.validation import ValidatedModel, summarize_text
+
+
+SUMMARY_MAX_LENGTH = 200
 
 
 @AfterValidator
@@ -54,15 +57,34 @@ class WikiClipResponseSchema(ValidatedModel):
     content: str | None = None
 
 
+class SummarizedWikiclipResponseSchema(WikiClipResponseSchema):
+    @field_validator("content", mode="after")
+    @classmethod
+    def summarize_content(cls, content: str) -> str:
+        return summarize_text(content, SUMMARY_MAX_LENGTH)
+
+
+class TrendingWikiClipSchema(ValidatedModel):
+    """Response schema for trending wikiclips"""
+
+    wikiclip_id: int
+    title: str
+    summary: str = Field(
+        ..., max_length=200, description="Summary text (max 200 characters)"
+    )
+    created_at: datetime
+
+
 class WikiClipSearchSortStrategy(str, Enum):
     """Enum for sorting strategies in WikiClip search."""
-    
+
     CREATION_DATE_ASC = "creation_date_asc"
     CREATION_DATE_DESC = "creation_date_desc"
 
     def __str__(self) -> str:
         """Return the string representation of the enum value."""
         return self.value
+
 
 @dataclass
 class WikiClipSearchSchema(PagedQuery):
@@ -89,3 +111,20 @@ class WikiClipSearchSchema(PagedQuery):
         False,
         description="Filter WikiClips by user ID",
     )
+
+
+class MyWikiPagesResponseSchema(ValidatedModel):
+    """Response schema for user's saved pages with metadata"""
+    
+    wikiclip_id: int = Field(..., description="WikiClip unique identifier")
+    title: str = Field(..., description="WikiClip title")
+    url: HttpUrl = Field(..., description="WikiClip URL")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    tags: List[str] = Field(default_factory=list, description="Associated tags")
+    content_summary: str = Field(..., max_length=200, description="Content summary (max 200 chars)")
+    sections_count: int = Field(default=0, description="Number of sections/parts")
+
+    @field_validator("content_summary", mode="after")
+    @classmethod
+    def summarize_content_summary(cls, content_summary: str) -> str:
+        return summarize_text(content_summary, SUMMARY_MAX_LENGTH)
