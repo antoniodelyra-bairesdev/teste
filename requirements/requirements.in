@@ -39,6 +39,7 @@ uvicorn[standard]
 uuid
 vulture
 werkzeug
-boto3-stubs[secretsmanager]
-moto[secretsmanager]
+boto3-stubs[secretsmanager,s3]
+moto[secretsmanager,s3]
 fakeredis
+Pillow

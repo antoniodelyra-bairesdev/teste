@@ -340,6 +340,19 @@ def db_make_migrations(ctx: Context) -> None:
 
 
 @task
+def db_make_empty_migrations(ctx: Context) -> None:
+    print("Initializing database migration files...")
+    year = datetime.now().year
+    month = datetime.now().month
+    day = datetime.now().day
+    hour = datetime.now().hour
+    minute = datetime.now().minute
+    second = datetime.now().second
+    date_stamp = f"{year}-{month}-{day}-{hour}-{minute}-{second}"
+    ctx.run(f"alembic revision -m '{BASE_DIR}-db-{date_stamp}'", pty=True)
+
+
+@task
 def db_upgrade(ctx: Context) -> None:
     ctx.run("alembic upgrade head", pty=True)
 

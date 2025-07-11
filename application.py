@@ -21,6 +21,7 @@ from ehp.core.services import (
     token_router,
     user_router,
     wikiclip_router,
+    user_router,
 )
 from ehp.db.db_manager import get_db_manager
 from ehp.utils.authentication import needs_api_key
@@ -59,7 +60,6 @@ app.include_router(root_router)
 app.include_router(token_router)
 app.include_router(user_router)
 app.include_router(wikiclip_router)
-app.include_router(user_router)
 
 
 @app.get("/openapi.json")
