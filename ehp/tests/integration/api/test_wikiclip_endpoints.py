@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from fastapi import HTTPException
 import pytest
@@ -10,9 +10,11 @@ from ehp.core.models.db.user import User
 from ehp.core.models.db.wikiclip import WikiClip
 from ehp.core.models.schema.paging import PagedResponse
 from ehp.core.models.schema.wikiclip import (
+    SUMMARY_MAX_LENGTH,
     WikiClipResponseSchema,
     WikiClipSearchSchema,
     WikiClipSearchSortStrategy,
+    MyWikiPagesResponseSchema,
 )
 from ehp.core.repositories.authentication import AuthenticationRepository
 from ehp.core.repositories.base import BaseRepository
@@ -174,7 +176,9 @@ class TestWikiClipEndpoints:
         # Setup mock repository
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
-        mock_repo.get_by_id_or_404.side_effect = HTTPException(status_code=404, detail="WikiClip not found")
+        mock_repo.get_by_id_or_404.side_effect = HTTPException(
+            status_code=404, detail="WikiClip not found"
+        )
 
         # Make request
         response = authenticated_client.get("/wikiclip/999/content", include_auth=True)
@@ -207,13 +211,17 @@ class TestWikiClipEndpoints:
 
         # Verify repository calls
         mock_repo.get_by_id_or_404.assert_called_once_with(1)
-        
+
         # Verify error logging
-        mock_log_error.assert_called_once_with(f"Error getting WikiClip content 1: {exc}")
+        mock_log_error.assert_called_once_with(
+            f"Error getting WikiClip content 1: {exc}"
+        )
 
     def test_get_wikiclip_content_invalid_id(self, authenticated_client: EHPTestClient):
         """Test WikiClip content retrieval with invalid ID format."""
-        response = authenticated_client.get("/wikiclip/invalid/content", include_auth=True)
+        response = authenticated_client.get(
+            "/wikiclip/invalid/content", include_auth=True
+        )
 
         # Should return 422 for invalid path parameter type
         assert response.status_code == 422
@@ -418,7 +426,9 @@ class TestWikiClipEndpoints:
         # Setup mock repository
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
-        mock_repo.get_by_id_or_404.side_effect = HTTPException(status_code=404, detail="WikiClip not found")
+        mock_repo.get_by_id_or_404.side_effect = HTTPException(
+            status_code=404, detail="WikiClip not found"
+        )
 
         # Make request
         response = authenticated_client.get("/wikiclip/999", include_auth=True)
@@ -1182,3 +1192,300 @@ class TestWikiClipEndpoints:
             if previous_date:
                 assert clip.created_at >= previous_date
             previous_date = clip.created_at
+
+    async def test_get_suggested_wikiclips_returns_paged_list(
+        self, authenticated_client: EHPTestClient, test_db_manager: DBManager
+    ):
+        # Setup mock repository
+        wikiclip_repo = WikiClipRepository(test_db_manager.get_session())
+
+        ARBITRARY_LENGTH = 300
+        # Create test data
+        clips = [
+            WikiClip(
+                id=i,
+                title=f"Test Article {i}",
+                content=f"Content for test article {i}." + ("a" * ARBITRARY_LENGTH),
+                url=f"https://example.com/test-article-{i}",
+                created_at=datetime(2024, 6, 16, 12, 0, 0) - timedelta(days=i),
+                related_links=[],
+                user_id=self.user.id,
+            )
+            for i in range(1, 6)  # Create 5 clips with different dates
+        ]
+        # Save test data
+        for clip in clips:
+            _= await wikiclip_repo.create(clip)
+
+        search = {
+            "page": "1",
+            "size": "5"
+        }
+
+        response = authenticated_client.get(
+            "/wikiclip/suggested", params=search, include_auth=True
+        )
+
+
+        assert response.status_code == 200, response.text
+        
+        payload = response.json()
+        data = payload["data"]
+
+        assert len(data) == len(clips)
+        assert all(len(item["content"]) == SUMMARY_MAX_LENGTH for item in data)
+        assert payload["filters"] == {key: int(value) for key, value in search.items()}
+
+    # ============================================================================
+    # GET MY SAVED PAGES TESTS (/wikiclip/my)
+    # ============================================================================
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    def test_get_my_pages_success(self, mock_repo_class, authenticated_client):
+        user = self.user
+        mock_repo = AsyncMock(spec=WikiClipRepository)
+        mock_repo_class.return_value = mock_repo
+        
+        sample_pages = [
+            WikiClip(
+                id=1,
+                title="My First Save",
+                content="This is my first saved article with some content that will be summarized.",
+                url="https://example.com/first",
+                created_at=datetime(2024, 1, 2, 12, 0, 0),
+                user_id=user.id,
+                related_links=["https://example.com/related1"],
+            ),
+            WikiClip(
+                id=2,
+                title="My Second Save",
+                content="Another article I saved for later reading.",
+                url="https://example.com/second", 
+                created_at=datetime(2024, 1, 1, 12, 0, 0),
+                user_id=user.id,
+                related_links=[],
+            ),
+        ]
+        
+        mock_repo.count_user_pages.return_value = 2
+        mock_repo.get_user_pages.return_value = sample_pages
+
+        response = authenticated_client.get("/wikiclip/my", include_auth=True)
+
+        assert response.status_code == 200
+        response_data = response.json()
+        
+        # Verify response structure
+        assert "data" in response_data
+        assert "total_count" in response_data
+        assert "page" in response_data
+        assert "page_size" in response_data
+        assert "filters" in response_data
+        
+        # Verify pagination
+        assert response_data["total_count"] == 2
+        assert response_data["page"] == 1
+        assert response_data["page_size"] == 20  # default page size
+        assert response_data["filters"] is None
+        
+        # Verify data structure
+        pages = response_data["data"]
+        assert len(pages) == 2
+        
+        # Check first page
+        first_page = pages[0]
+        assert first_page["wikiclip_id"] == 1
+        assert first_page["title"] == "My First Save"
+        assert first_page["url"] == "https://example.com/first"
+        assert "content_summary" in first_page
+        assert "tags" in first_page
+        assert "sections_count" in first_page
+        assert "created_at" in first_page
+
+        # Verify repository calls
+        mock_repo.count_user_pages.assert_called_once_with(user.id)
+        mock_repo.get_user_pages.assert_called_once_with(user.id, page=1, page_size=20)
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    def test_get_my_pages_with_pagination(self, mock_repo_class, authenticated_client):
+        user = self.user
+        mock_repo = AsyncMock(spec=WikiClipRepository)
+        mock_repo_class.return_value = mock_repo
+        
+        # Create sample page for page 2
+        sample_page = WikiClip(
+            id=3,
+            title="Page 2 Article",
+            content="Content on second page",
+            url="https://example.com/page2",
+            created_at=datetime(2024, 1, 3, 12, 0, 0),
+            user_id=user.id,
+            related_links=[],
+        )
+        
+        mock_repo.count_user_pages.return_value = 15  # Total of 15 pages
+        mock_repo.get_user_pages.return_value = [sample_page]
+
+        # Make request with pagination
+        response = authenticated_client.get(
+            "/wikiclip/my?page=2&size=5", 
+            include_auth=True
+        )
+
+        # Assertions
+        assert response.status_code == 200
+        response_data = response.json()
+        
+        # Verify pagination was applied
+        assert response_data["total_count"] == 15
+        assert response_data["page"] == 2
+        assert response_data["page_size"] == 5
+        
+        # Verify repository was called with correct parameters
+        mock_repo.get_user_pages.assert_called_once_with(user.id, page=2, page_size=5)
+
+    def test_get_my_pages_unauthorized(self, test_client: EHPTestClient):
+        response = test_client.get("/wikiclip/my")
+
+        # Should return 403 for unauthenticated request
+        assert response.status_code == 403
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    def test_get_my_pages_empty_result(self, mock_repo_class, authenticated_client):
+        user = self.user
+        mock_repo = AsyncMock(spec=WikiClipRepository)
+        mock_repo_class.return_value = mock_repo
+        
+        mock_repo.count_user_pages.return_value = 0
+        mock_repo.get_user_pages.return_value = []
+
+        # Make request
+        response = authenticated_client.get("/wikiclip/my", include_auth=True)
+
+        # Assertions
+        assert response.status_code == 200
+        response_data = response.json()
+        
+        assert response_data["total_count"] == 0
+        assert response_data["data"] == []
+        assert response_data["page"] == 1
+        assert response_data["page_size"] == 20
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    def test_get_my_pages_content_summary_truncation(self, mock_repo_class, authenticated_client):
+        user = self.user
+        mock_repo = AsyncMock(spec=WikiClipRepository)
+        mock_repo_class.return_value = mock_repo
+        
+        # Create page with long content
+        long_content = "A" * 250  # 250 characters
+        sample_page = WikiClip(
+            id=1,
+            title="Long Article",
+            content=long_content,
+            url="https://example.com/long",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            user_id=user.id,
+            related_links=[],
+        )
+        
+        mock_repo.count_user_pages.return_value = 1
+        mock_repo.get_user_pages.return_value = [sample_page]
+
+        # Make request
+        response = authenticated_client.get("/wikiclip/my", include_auth=True)
+
+        # Assertions
+        assert response.status_code == 200
+        response_data = response.json()
+        
+        page = response_data["data"][0]
+        summary = page["content_summary"]
+        
+        # Should be truncated to 200 chars max
+        assert len(summary) <= 200
+        assert summary.endswith("...")
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    def test_get_my_pages_sections_count(self, mock_repo_class, authenticated_client):
+        user = self.user
+        mock_repo = AsyncMock(spec=WikiClipRepository)
+        mock_repo_class.return_value = mock_repo
+        
+        # Create page with multiple sections (paragraphs)
+        content_with_sections = "Section 1 content.\n\nSection 2 content.\n\nSection 3 content."
+        sample_page = WikiClip(
+            id=1,
+            title="Multi-section Article",
+            content=content_with_sections,
+            url="https://example.com/sections",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            user_id=user.id,
+            related_links=[],
+        )
+        
+        mock_repo.count_user_pages.return_value = 1
+        mock_repo.get_user_pages.return_value = [sample_page]
+
+        # Make request
+        response = authenticated_client.get("/wikiclip/my", include_auth=True)
+
+        # Assertions
+        assert response.status_code == 200
+        response_data = response.json()
+        
+        page = response_data["data"][0]
+        # Should count 3 sections based on \n\n separation
+        assert page["sections_count"] == 3
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    def test_get_my_pages_with_tags(self, mock_repo_class, authenticated_client):
+        user = self.user
+        mock_repo = AsyncMock(spec=WikiClipRepository)
+        mock_repo_class.return_value = mock_repo
+        
+        # Create mock tags
+        mock_tag1 = MagicMock()
+        mock_tag1.description = "Technology"
+        mock_tag2 = MagicMock()
+        mock_tag2.description = "Programming"
+        
+        # Create page with tags
+        sample_page = WikiClip(
+            id=1,
+            title="Tagged Article",
+            content="Article about technology and programming",
+            url="https://example.com/tagged",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            user_id=user.id,
+            related_links=[],
+        )
+        # Mock the tags relationship
+        sample_page.tags = [mock_tag1, mock_tag2]
+        
+        mock_repo.count_user_pages.return_value = 1
+        mock_repo.get_user_pages.return_value = [sample_page]
+
+        # Make request
+        response = authenticated_client.get("/wikiclip/my", include_auth=True)
+
+        # Assertions
+        assert response.status_code == 200
+        response_data = response.json()
+        
+        page = response_data["data"][0]
+        assert page["tags"] == ["Technology", "Programming"]
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    def test_get_my_pages_repository_error(self, mock_repo_class, authenticated_client):
+        user = self.user
+        mock_repo = AsyncMock(spec=WikiClipRepository)
+        mock_repo_class.return_value = mock_repo
+        mock_repo.count_user_pages.side_effect = Exception("Database error")
+
+        # Make request
+        response = authenticated_client.get("/wikiclip/my", include_auth=True)
+
+        # Assertions
+        assert response.status_code == 500
+        assert "Could not fetch saved pages due to an error" in response.json()["detail"]

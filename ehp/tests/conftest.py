@@ -179,7 +179,10 @@ def aws_mock():
     This can be used to mock S3, DynamoDB, etc. as needed.
     """
     with mock_aws():
-        yield AWSClient()
+        aws_client = AWSClient()
+        # Create the S3 bucket that the application expects
+        aws_client.s3_client.create_bucket(Bucket=settings.AWS_S3_BUCKET)
+        yield aws_client
 
 
 @pytest.fixture

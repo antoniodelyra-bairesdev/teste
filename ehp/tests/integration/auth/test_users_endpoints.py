@@ -215,9 +215,7 @@ class TestUpdatePasswordForResetEndpoint:
     ):
         new_password = "NewPa$sword123"
 
-        auth_repo = AuthenticationRepository(
-            test_db_manager.get_session()
-        )
+        auth_repo = AuthenticationRepository(test_db_manager.get_session())
 
         assert await auth_repo.get_by_id(456) is None, (
             "User with ID 456 should not exist"
@@ -238,3 +236,100 @@ class TestUpdatePasswordForResetEndpoint:
         assert response.json() == {"detail": "User not found."}, (
             "Expected 'User not found.' message"
         )
+
+
+@pytest.mark.integration
+class TestUpdateUserSettingsEndpoint:
+    ORIGINAL_PASSWORD: ClassVar[str] = "Te$tPassword123"
+    RESET_TOKEN: ClassVar[str] = "mock-123"
+
+    @pytest.fixture
+    async def authenticated_client(
+        self,
+        test_client: EHPTestClient,
+        setup_jwt,
+        test_db_manager: DBManager,
+    ):
+        profile_repository = BaseRepository(test_db_manager.get_session(), Profile)
+        for profilename, profilecode in constants.PROFILE_IDS.items():
+            _ = await profile_repository.create(
+                Profile(
+                    id=profilecode,
+                    name=profilename,
+                    code=profilename.lower(),
+                )
+            )
+
+        authentication = Authentication(
+            id=123,
+            user_name="mockuser",
+            user_email="mock@example.com",
+            user_pwd=hash_password(self.ORIGINAL_PASSWORD),
+            is_active="1",
+            is_confirmed="1",
+            retry_count=0,
+            profile_id=constants.PROFILE_IDS["user"],
+            reset_token=self.RESET_TOKEN,
+            reset_token_expires=timezone_now() + timedelta(days=1),
+        )
+        user = User(
+            id=123,
+            full_name="Mock User",
+            created_at=None,
+            auth_id=authentication.id,
+        )
+        auth_repository = AuthenticationRepository(test_db_manager.get_session())
+        user_repository = BaseRepository(test_db_manager.get_session(), User)
+        _ = await auth_repository.create(authentication)
+        _ = await user_repository.create(user)
+        authentication.user = user
+        session_manager = SessionManager()
+        authenticated_token = session_manager.create_session(
+            str(authentication.id), authentication.user_email, with_refresh=False
+        )
+        test_client.auth_token = authenticated_token.access_token
+        yield test_client
+
+    async def test_update_user_settings(
+        self, authenticated_client: EHPTestClient, test_db_manager: DBManager
+    ):
+        response = authenticated_client.put(
+            "/users/settings",
+            json={
+                "readability_preferences": {"theme": "dark"},
+                "email_notifications": False,
+            },
+            include_auth=True,
+        )
+        assert response.status_code == 204, (
+            "Expected 204 status code for successful settings update"
+        )
+
+        # Verify the settings were updated in the database
+        db_session = test_db_manager.get_session()
+        user_repo = BaseRepository(db_session, User)
+        user = await user_repo.get_by_id(123)
+        assert user is not None
+        assert user.readability_preferences == {"theme": "dark"}
+        assert user.email_notifications is False
+
+    async def test_update_user_settings_no_changes(
+        self, authenticated_client: EHPTestClient, test_db_manager: DBManager
+    ):
+        # Attempt to update settings with no changes
+        response = authenticated_client.put(
+            "/users/settings",
+            json={},
+            include_auth=True,
+        )
+        assert response.status_code == 204, (
+            "Expected 204 status code for no changes in settings"
+        )
+
+        # Verify the settings remain unchanged in the database
+        db_session = test_db_manager.get_session()
+        user_repo = BaseRepository(db_session, User)
+        user = await user_repo.get_by_id(123)
+        assert user is not None
+        assert user.readability_preferences is None
+        assert user.email_notifications is True
