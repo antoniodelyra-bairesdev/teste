@@ -4,14 +4,14 @@
 import logging
 from typing import Any
 
-from fastapi import Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from starlette.responses import JSONResponse
 
 from ehp.base.exceptions import default_error_handler
-from ehp.base.middleware import RequestMiddleware
+from ehp.base.middleware import RequestMiddleware, authorized_session
 from ehp.config import settings
 from ehp.core.services import (
     logout_router,
@@ -20,8 +20,8 @@ from ehp.core.services import (
     root_router,
     token_router,
     user_router,
+    user_non_api_key_router,
     wikiclip_router,
-    user_router,
 )
 from ehp.db.db_manager import get_db_manager
 from ehp.utils.authentication import needs_api_key
@@ -32,8 +32,10 @@ app = FastAPI(
     title=settings.APP_NAME,
     description=settings.APP_DESCRIPTION,
     version=settings.APP_VERSION,
-    dependencies=[Depends(needs_api_key), Depends(get_db_manager)],
+    dependencies=[Depends(get_db_manager), Depends(authorized_session)],
 )
+keyed_router = APIRouter(dependencies=[Depends(needs_api_key)])
+
 
 app.add_exception_handler(500, default_error_handler)
 
@@ -53,13 +55,17 @@ app.add_middleware(
 
 app.add_middleware(RequestMiddleware)
 
-app.include_router(logout_router)
-app.include_router(password_router)
-app.include_router(registration_router)
-app.include_router(root_router)
-app.include_router(token_router)
-app.include_router(user_router)
-app.include_router(wikiclip_router)
+keyed_router.include_router(logout_router)
+keyed_router.include_router(password_router)
+keyed_router.include_router(registration_router)
+keyed_router.include_router(root_router)
+keyed_router.include_router(token_router)
+keyed_router.include_router(user_router)
+keyed_router.include_router(wikiclip_router)
+
+app.include_router(user_non_api_key_router)
+
+app.include_router(keyed_router)
 
 
 @app.get("/openapi.json")
