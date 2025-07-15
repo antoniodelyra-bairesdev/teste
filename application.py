@@ -16,6 +16,7 @@ from ehp.config import settings
 from ehp.core.services import (
     logout_router,
     password_router,
+    reading_settings_router,
     registration_router,
     root_router,
     token_router,
@@ -57,6 +58,7 @@ app.add_middleware(RequestMiddleware)
 
 keyed_router.include_router(logout_router)
 keyed_router.include_router(password_router)
+keyed_router.include_router(reading_settings_router)
 keyed_router.include_router(registration_router)
 keyed_router.include_router(root_router)
 keyed_router.include_router(token_router)
