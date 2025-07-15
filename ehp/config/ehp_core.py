@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     }
     ITEMS_PER_PAGE: int = 20
     MAX_ITEMS_PER_PAGE: int = 200
+    MAX_FILE_SIZE: int = os.environ.get("MAX_FILE_SIZE", 500 * 1024)
     DEFAULT_LANGUAGE: str = os.environ.get("DEFAULT_LANGUAGE", "en_US")
     DEPLOYED_AT: str = str(datetime.now())
 

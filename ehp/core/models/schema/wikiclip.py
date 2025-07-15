@@ -74,6 +74,11 @@ class TrendingWikiClipSchema(ValidatedModel):
     )
     created_at: datetime
 
+    @field_validator("summary", mode="after")
+    @classmethod
+    def summarize_summary(cls, summary: str) -> str:
+        return summarize_text(summary, SUMMARY_MAX_LENGTH)
+
 
 class WikiClipSearchSortStrategy(str, Enum):
     """Enum for sorting strategies in WikiClip search."""
@@ -121,7 +126,7 @@ class MyWikiPagesResponseSchema(ValidatedModel):
     url: HttpUrl = Field(..., description="WikiClip URL")
     created_at: datetime = Field(..., description="Creation timestamp")
     tags: List[str] = Field(default_factory=list, description="Associated tags")
-    content_summary: str = Field(..., max_length=200, description="Content summary (max 200 chars)")
+    content_summary: str = Field(..., description="Content summary (truncated to 200 chars)")
     sections_count: int = Field(default=0, description="Number of sections/parts")
 
     @field_validator("content_summary", mode="after")

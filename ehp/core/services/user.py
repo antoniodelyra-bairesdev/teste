@@ -1,13 +1,16 @@
+from math import floor
 import traceback
 import secrets
 from datetime import datetime, timedelta
 import os
+from typing import Annotated
 
 from pydantic_core import ValidationError
 from sqlalchemy.exc import IntegrityError
 import uuid
 from io import BytesIO
 
+from ehp.base.jwt_helper import ACCESS_TOKEN_EXPIRE
 from ehp.base.session import SessionManager
 from ehp.config import settings
 from ehp.core.models.schema.user import (
@@ -19,17 +22,19 @@ from ehp.core.models.schema.user import (
     UpdateUserSettings,
     UserDisplayNameResponseSchema,
     UserDisplayNameUpdateSchema,
-    UpdateUserSettings,
     UserProfileResponseSchema,
     UserProfileUpdateSchema,
-    AvatarUploadResponseSchema
+    AvatarUploadResponseSchema,
 )
 from fastapi import APIRouter, HTTPException, status, UploadFile, File
 from PIL import Image
 
 from ehp.core.repositories.user import UserRepository, UserNotFoundException
-from ehp.core.models.schema.user import UserCategoriesUpdateSchema, UserCategoriesResponseSchema
-from ehp.core.repositories.user import UserRepository, UserNotFoundException, InvalidNewsCategoryException
+from ehp.core.models.schema.user import (
+    UserCategoriesUpdateSchema,
+    UserCategoriesResponseSchema,
+)
+from ehp.core.repositories.user import InvalidNewsCategoryException
 from ehp.core.repositories.authentication import AuthenticationRepository
 from ehp.core.services.session import AuthContext
 from ehp.db.db_manager import ManagedAsyncSession
@@ -39,10 +44,12 @@ from ehp.utils.constants import HTTP_INTERNAL_SERVER_ERROR
 from ehp.utils.date_utils import timezone_now
 from ehp.utils.email import send_notification
 from ehp.base.aws import AWSClient
-from ehp.config import settings
 
 
 router = APIRouter(
+    prefix="/users", tags=["Users"], responses={404: {"description": "Not found"}}
+)
+non_api_key_router = APIRouter(
     prefix="/users", tags=["Users"], responses={404: {"description": "Not found"}}
 )
 
@@ -426,7 +433,12 @@ async def request_email_change(
             )
 
         # Generate secure token
-        change_token = generate_email_change_token()
+        manager = SessionManager()
+        change_token = manager.create_session(
+            str(user.id),
+            new_email,
+            with_refresh=False,
+        ).access_token
 
         # Set token expiration (30 minutes from now)
         expiration_time = datetime.now() + timedelta(minutes=30)
@@ -443,17 +455,18 @@ async def request_email_change(
         auth.email_change_token = change_token
         auth.email_change_token_expires = expiration_time
 
-        await auth_repo.update(auth)
+        _ = await auth_repo.update(auth)
 
         # Send verification email to NEW email address
         email_subject = "Confirm Your Email Change"
+        expiration_minutes = floor(ACCESS_TOKEN_EXPIRE.total_seconds())
         email_body = f"""
         You have requested to change your email address.
 
         Please click the following link to confirm this change:
-        {settings.APP_URL}/users/confirm-email?token={change_token}
+        {settings.APP_URL}/users/confirm-email?x-token-auth={change_token}
 
-        This link will expire in 30 minutes.
+        This link will expire in {expiration_minutes} minutes.
 
         If you did not request this change, please ignore this email.
         """
@@ -466,7 +479,7 @@ async def request_email_change(
             auth.pending_email = None
             auth.email_change_token = None
             auth.email_change_token_expires = None
-            await auth_repo.update(auth)
+            _ = await auth_repo.update(auth)
 
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -488,9 +501,9 @@ async def request_email_change(
         )
 
 
-@router.get("/confirm-email", response_model=EmailChangeResponseSchema)
+@non_api_key_router.get("/confirm-email", response_model=EmailChangeResponseSchema)
 async def confirm_email_change(
-    token: str,
+    user: AuthContext,
     db_session: ManagedAsyncSession,
 ) -> EmailChangeResponseSchema:
     """
@@ -500,66 +513,49 @@ async def confirm_email_change(
     try:
         auth_repo = AuthenticationRepository(db_session)
 
-        # Find authentication record by token
-        from sqlalchemy import select
-
-        from ehp.core.models.db.authentication import Authentication
-
-        stmt = select(Authentication).where(Authentication.email_change_token == token)
-        result = await db_session.execute(stmt)
-        auth = result.scalar_one_or_none()
-
-        if not auth:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired token",
-            )
-
         # Check if token is expired
         if (
-            not auth.email_change_token_expires
-            or auth.email_change_token_expires < datetime.now()
+            not user.email_change_token_expires
+            or user.email_change_token_expires < datetime.now()
         ):
             # Clean up expired token
-            auth.pending_email = None
-            auth.email_change_token = None
-            auth.email_change_token_expires = None
-            await auth_repo.update(auth)
+            user.pending_email = None
+            user.email_change_token = None
+            user.email_change_token_expires = None
+            _ = await auth_repo.update(user)
 
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Token has expired",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired session",
             )
 
         # Check if pending email exists
-        if not auth.pending_email:
+        if not user.pending_email:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No pending email change found",
             )
 
         # Update email address
-        old_email = auth.user_email
-        auth.user_email = auth.pending_email
+        old_email = user.user_email
+        user.user_email = user.pending_email
 
         # Clear pending change fields
-        auth.pending_email = None
-        auth.email_change_token = None
-        auth.email_change_token_expires = None
+        user.pending_email = None
+        user.email_change_token = None
+        user.email_change_token_expires = None
 
-        await auth_repo.update(auth)
+        _ = await auth_repo.update(user)
 
         # Optional: Send confirmation email to old email address
         try:
             confirmation_subject = "Email Address Changed"
-            confirmation_body = (
-                f"""
-            Your email address has been successfully changed from {old_email} to {auth.user_email}.
+            confirmation_body = f"""
+            Your email address has been successfully changed from {old_email} to {user.user_email}.
 
             If you did not make this change, please contact support immediately.
             """
-            )
-            send_notification(confirmation_subject, confirmation_body, [old_email])
+            _ = send_notification(confirmation_subject, confirmation_body, [old_email])
         except Exception as e:
             # Don't fail the email change if confirmation email fails
             log_error(f"Failed to send confirmation email to old address: {e}")
@@ -597,140 +593,53 @@ async def update_user_settings(
 
 @router.post("/me/avatar", response_model=AvatarUploadResponseSchema)
 async def upload_avatar(
-    avatar: UploadFile = File(...),
-    db_session: ManagedAsyncSession = None,
-    user: AuthContext = None,
-) -> AvatarUploadResponseSchema:
-    """Upload user avatar image."""
-    
-    # File size validation
-    MAX_FILE_SIZE = os.environ.get("MAX_FILE_SIZE", 500 * 1024)
-    
-    # Read file content
-    file_content = await avatar.read()
-    
-    if len(file_content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File size exceeds 500KB limit"
-        )
-    
-    # File format validation
-    allowed_formats = {".png", ".jpg", ".jpeg", ".webp"}
-    file_extension = os.path.splitext(avatar.filename.lower())[1] if avatar.filename else ""
-    if file_extension not in allowed_formats:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PNG, JPG, JPEG, and WebP formats are allowed"
-        )
-    
-    # Validate that the file is actually an image
-    try:
-        image = Image.open(BytesIO(file_content))
-        image.verify()
-        # Check if format is supported
-        if image.format.lower() not in ['png', 'jpeg', 'webp']:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid image file"
-            )
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid image file"
-        )
-    
-    try:
-        # Generate unique filename
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        s3_key = f"avatars/{unique_filename}"
-        
-        # Upload to S3
-        aws_client = AWSClient()
-        aws_client.s3_client.put_object(
-            Bucket=settings.AWS_S3_BUCKET,
-            Key=s3_key,
-            Body=file_content,
-            ContentType=avatar.content_type,
-            ContentDisposition="inline"
-        )
-        
-        # Generate the avatar URL
-        avatar_url = f"https://{settings.AWS_S3_BUCKET}.s3.{settings.AWS_REGION_NAME}.amazonaws.com/{s3_key}"
-        
-        # Update user avatar in database
-        repository = UserRepository(db_session)
-        await repository.update_avatar(user.user.id, avatar_url)
-        
-        return AvatarUploadResponseSchema(
-            avatar_url=avatar_url,
-            message="Avatar uploaded successfully"
-        )
-        
-    except UserNotFoundException:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    except Exception as e:
-        await db_session.rollback()
-        log_error(f"Error uploading avatar: {e}")
-        raise HTTPException(
-            status_code=HTTP_INTERNAL_SERVER_ERROR,
-            detail="Failed to upload avatar"
-        )
-
-
-@router.post("/me/avatar", response_model=AvatarUploadResponseSchema)
-async def upload_avatar(
     db_session: ManagedAsyncSession,
     user: AuthContext,
     avatar: UploadFile = File(...),
 ) -> AvatarUploadResponseSchema:
     """Upload user avatar image."""
-    
-    # File size validation (500KB limit)
-    MAX_FILE_SIZE = 500 * 1024  # 500KB in bytes
-    
+
+    # File size validation
+
     # Read file content
     file_content = await avatar.read()
-    
-    if len(file_content) > MAX_FILE_SIZE:
+
+    if len(file_content) > settings.MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File size exceeds 500KB limit"
+            detail="File size exceeds 500KB limit",
         )
-    
+
     # File format validation
     allowed_formats = {".png", ".jpg", ".jpeg", ".webp"}
-    file_extension = avatar.filename.lower().split(".")[-1] if avatar.filename else ""
-    if f".{file_extension}" not in allowed_formats:
+    file_extension = (
+        os.path.splitext(avatar.filename.lower())[1] if avatar.filename else ""
+    )
+    if file_extension not in allowed_formats:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PNG, JPG, JPEG, and WebP formats are allowed"
+            detail="Only PNG, JPG, JPEG, and WebP formats are allowed",
         )
-    
+
     # Validate that the file is actually an image
     try:
         image = Image.open(BytesIO(file_content))
         image.verify()
         # Check if format is supported
-        if image.format.lower() not in ['png', 'jpeg', 'webp']:
+        if image.format.lower() not in ["png", "jpeg", "webp"]:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid image file"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image file"
             )
     except Exception:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid image file"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image file"
         )
-    
+
     try:
         # Generate unique filename
-        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
         s3_key = f"avatars/{unique_filename}"
-        
+
         # Upload to S3
         aws_client = AWSClient()
         aws_client.s3_client.put_object(
@@ -738,33 +647,29 @@ async def upload_avatar(
             Key=s3_key,
             Body=file_content,
             ContentType=avatar.content_type,
-            ContentDisposition="inline"
+            ContentDisposition="inline",
         )
-        
+
         # Generate the avatar URL
         avatar_url = f"https://{settings.AWS_S3_BUCKET}.s3.{settings.AWS_REGION_NAME}.amazonaws.com/{s3_key}"
-        
+
         # Update user avatar in database
         repository = UserRepository(db_session)
         await repository.update_avatar(user.user.id, avatar_url)
-        
+
         return AvatarUploadResponseSchema(
-            avatar_url=avatar_url,
-            message="Avatar uploaded successfully"
+            avatar_url=avatar_url, message="Avatar uploaded successfully"
         )
-        
+
     except UserNotFoundException:
-        await db_session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
     except Exception as e:
         await db_session.rollback()
         log_error(f"Error uploading avatar: {e}")
         raise HTTPException(
-            status_code=HTTP_INTERNAL_SERVER_ERROR,
-            detail="Failed to upload avatar"
+            status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Failed to upload avatar"
         )
 
 
@@ -775,33 +680,29 @@ async def update_user_categories(
     user: AuthContext,
 ) -> UserCategoriesResponseSchema:
     """Update the authenticated user's preferred news categories."""
-    
+
     try:
         repository = UserRepository(db_session)
-        
+
         # Update user's preferred news categories
         updated_user = await repository.update_preferred_news_categories(
             user.user.id, categories_data.category_ids
         )
-        
+
         return UserCategoriesResponseSchema(
             id=updated_user.id,
             full_name=updated_user.full_name,
             preferred_news_categories=updated_user.preferred_news_categories,
         )
-        
+
     except UserNotFoundException:
         await db_session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
     except InvalidNewsCategoryException as e:
         await db_session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
         await db_session.rollback()
         raise
@@ -809,6 +710,5 @@ async def update_user_categories(
         await db_session.rollback()
         log_error(f"Error updating user categories: {e}")
         raise HTTPException(
-            status_code=HTTP_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Internal server error"
         )

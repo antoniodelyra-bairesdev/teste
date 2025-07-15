@@ -8,7 +8,7 @@ from ehp.utils.constants import (
     AUTH_RESET_PASSWORD,
 )
 from ehp.core.models.db.base import BaseModel
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -51,7 +51,7 @@ class Authentication(BaseModel):
         "auth_tx_pending_email", String(300), nullable=True
     )
     email_change_token: Mapped[str | None] = mapped_column(
-        "auth_tx_email_change_token", String(255), nullable=True
+        "auth_tx_email_change_token", Text(), nullable=True
     )
     email_change_token_expires: Mapped[datetime | None] = mapped_column(
         "auth_dt_email_change_token_expires", DateTime, nullable=True

@@ -16,11 +16,10 @@ from ehp.core.repositories.authentication import AuthenticationRepository
 from ehp.core.services.email import UserMailer
 from ehp.db.db_manager import DBManager, ManagedAsyncSession
 from ehp.utils import constants as const
-from ehp.utils import hash_password, make_response, needs_api_key
+from ehp.utils import hash_password, make_response
 from ehp.utils.base import log_error
 
 router = APIRouter(
-    dependencies=[Depends(needs_api_key)],
     responses={404: {"description": "Not found"}},
 )
 

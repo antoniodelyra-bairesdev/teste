@@ -8,7 +8,7 @@ from ehp.config import settings
 from ehp.utils.base import log_error
 
 
-async def needs_api_key(x_api_key: Annotated[Optional[str], Header()]) -> None:
+def needs_api_key(x_api_key: Annotated[Optional[str], Header()]) -> None:
     if not x_api_key or x_api_key != settings.API_KEY_VALUE:
         raise HTTPException(status_code=400, detail="Invalid X-Api-Key header.")
 

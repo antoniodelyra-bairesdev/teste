@@ -1,30 +1,34 @@
 import traceback
-from typing import Optional, List
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from typing import Optional
 
-from ehp.core.models.db.user import User
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ehp.core.models.db.news_category import NewsCategory
+from ehp.core.models.db.user import User
 from ehp.core.repositories.base import BaseRepository
 from ehp.utils.base import log_error
+from ehp.utils.date_utils import timezone_now
 
 
 class UserNotFoundException(Exception):
     """Exception raised when a user is not found."""
+
     pass
 
 
 class InvalidNewsCategoryException(Exception):
     """Exception raised when invalid news category IDs are provided."""
+
     pass
 
 
 class UserRepository(BaseRepository[User]):
     """User repository with specific methods."""
-    
+
     def __init__(self, session: AsyncSession):
         super().__init__(session, User)
-    
+
     async def get_by_display_name(self, display_name: str) -> Optional[User]:
         """Get user by display name."""
         if not display_name:
@@ -51,7 +55,7 @@ class UserRepository(BaseRepository[User]):
         except Exception as e:
             log_error(f"Error checking if display_name exists {display_name}: {e}")
             return False
-    
+
     async def get_by_auth_id(self, auth_id: int) -> Optional[User]:
         """Get user by authentication ID."""
         try:
@@ -59,16 +63,18 @@ class UserRepository(BaseRepository[User]):
             result = await self.session.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
-            log_error(f"Error getting user by auth_id {auth_id}: {e}\nTraceback: {traceback.format_exc()}")
+            log_error(
+                f"Error getting user by auth_id {auth_id}: {e}\nTraceback: {traceback.format_exc()}"
+            )
             return None
-    
+
     async def update_full_name(self, user_id: int, full_name: str) -> User:
         """Update user's full name."""
         try:
             user = await self.get_by_id(user_id)
             if not user:
                 raise UserNotFoundException(f"User with id {user_id} not found")
-            
+
             user.full_name = full_name
             # CRITICAL: Need to commit changes to the DB
             await self.session.commit()
@@ -77,7 +83,9 @@ class UserRepository(BaseRepository[User]):
             raise
         except Exception as e:
             await self.session.rollback()  # Crucial if commit() fails
-            log_error(f"Error updating full_name for user {user_id}: {e}\nTraceback: {traceback.format_exc()}")
+            log_error(
+                f"Error updating full_name for user {user_id}: {e}\nTraceback: {traceback.format_exc()}"
+            )
             raise
 
     async def update_avatar(self, user_id: int, avatar_url: str) -> User:
@@ -86,7 +94,7 @@ class UserRepository(BaseRepository[User]):
             user = await self.get_by_id(user_id)
             if not user:
                 raise UserNotFoundException(f"User with id {user_id} not found")
-            
+
             user.avatar = avatar_url
             await self.session.commit()
             return user
@@ -94,10 +102,14 @@ class UserRepository(BaseRepository[User]):
             raise
         except Exception as e:
             await self.session.rollback()
-            log_error(f"Error updating avatar for user {user_id}: {e}\nTraceback: {traceback.format_exc()}")
+            log_error(
+                f"Error updating avatar for user {user_id}: {e}\nTraceback: {traceback.format_exc()}"
+            )
             raise
 
-    async def update_preferred_news_categories(self, user_id: int, category_ids: List[int]) -> User:
+    async def update_preferred_news_categories(
+        self, user_id: int, category_ids: list[int]
+    ) -> User:
         """Update user's preferred news categories."""
         try:
             # First, validate that all category IDs exist
@@ -105,16 +117,20 @@ class UserRepository(BaseRepository[User]):
                 query = select(NewsCategory.id).where(NewsCategory.id.in_(category_ids))
                 result = await self.session.execute(query)
                 existing_ids = [row[0] for row in result.fetchall()]
-                
-                invalid_ids = [cat_id for cat_id in category_ids if cat_id not in existing_ids]
+
+                invalid_ids = [
+                    cat_id for cat_id in category_ids if cat_id not in existing_ids
+                ]
                 if invalid_ids:
-                    raise InvalidNewsCategoryException(f"Invalid news category IDs: {invalid_ids}")
-            
+                    raise InvalidNewsCategoryException(
+                        f"Invalid news category IDs: {invalid_ids}"
+                    )
+
             # Get user
             user = await self.get_by_id(user_id)
             if not user:
                 raise UserNotFoundException(f"User with id {user_id} not found")
-            
+
             # Update preferred news categories
             user.preferred_news_categories = category_ids if category_ids else None
             await self.session.commit()
@@ -123,5 +139,50 @@ class UserRepository(BaseRepository[User]):
             raise
         except Exception as e:
             await self.session.rollback()
-            log_error(f"Error updating preferred news categories for user {user_id}: {e}\nTraceback: {traceback.format_exc()}")
+            log_error(
+                f"Error updating preferred news categories for user {user_id}: {e}\nTraceback: {traceback.format_exc()}"
+            )
+            raise
+
+    async def get_reading_settings(self, user_id: int) -> dict:
+        """Get user's reading settings."""
+        try:
+            user = await self.get_by_id(user_id)
+            if not user:
+                raise UserNotFoundException(f"User with id {user_id} not found")
+            
+            # Return existing settings or defaults
+            if user.reading_settings:
+                return user.reading_settings
+            
+            # Return default settings
+            return {
+                "font_size": "Medium",
+                "fonts": {"headline": "System", "body": "System", "caption": "System"},
+                "font_weight": "Normal",
+                "line_spacing": "Standard",
+                "color_mode": "Default",
+            }
+        except UserNotFoundException:
+            raise
+        except Exception as e:
+            log_error(f"Error getting reading settings for user {user_id}: {e}")
+            raise
+
+    async def update_reading_settings(self, user_id: int, settings: dict) -> User:
+        """Update user's reading settings."""
+        try:
+            user = await self.get_by_id(user_id)
+            if not user:
+                raise UserNotFoundException(f"User with id {user_id} not found")
+
+            user.reading_settings = settings
+            user.last_update = timezone_now()
+
+            return user
+        except UserNotFoundException:
+            raise
+        except Exception as e:
+            await self.session.rollback()
+            log_error(f"Error updating reading settings for user {user_id}: {e}")
             raise

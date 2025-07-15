@@ -4,7 +4,7 @@ import uuid
 from contextvars import ContextVar
 from typing import Annotated, Optional
 
-from fastapi import Depends, HTTPException, Request, Response
+from fastapi import Depends, HTTPException, Header, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -12,10 +12,10 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from ehp.base.jwt_helper import JWTClaimsPayload
 from ehp.base.session import SessionManager
 from ehp.config import settings
+from ehp.utils.authentication import needs_api_key
 from ehp.utils.base import log_error
 
-auth_handler = APIKeyHeader(name="x-token-auth", auto_error=True)
-
+auth_handler = APIKeyHeader(name="x-token-auth", auto_error=False)
 
 
 def authenticated_session(
@@ -25,6 +25,7 @@ def authenticated_session(
     Dependency to get the authenticated user's claims.
     This is used to ensure that the user is authenticated for certain endpoints.
     """
+
     session_manager = SessionManager()
     try:
         session_data = session_manager.get_session_from_token(token=claims)
@@ -44,6 +45,32 @@ def authenticated_session(
             status_code=401,
             detail="Invalid or expired session",
         )
+
+
+def authorized_session(
+    x_token_auth: Annotated[str | None, Depends(auth_handler)],
+    x_api_key: Annotated[str | None, Header()] = None,
+    x_token_auth_query: Annotated[str | None, Query(alias="x-token-auth")] = None,
+) -> JWTClaimsPayload | None:
+    """
+    Dependency to ensure proper authorization for endpoints.
+    It checks for the presence of an API key or a valid JWT token in the request headers
+    or query parameters. If neither is provided, it raises a 403 Forbidden error.
+    """
+
+    x_token_auth = x_token_auth or x_token_auth_query
+    if x_api_key is None and x_token_auth is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
+        )
+    elif x_api_key is not None:
+        needs_api_key(x_api_key)
+    elif x_token_auth_query is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="API key is required"
+        )
+    if x_token_auth:
+        return authenticated_session(x_token_auth)
 
 
 _request_context = ContextVar("request_context", default=None)

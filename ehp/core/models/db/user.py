@@ -1,9 +1,8 @@
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql.schema import Column
 
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.models.db.base import BaseModel
@@ -37,11 +36,23 @@ class User(BaseModel):
         DateTime(timezone=True),
         nullable=True,
     )
-    readability_preferences: Mapped[Dict[str, Any] | None] = mapped_column(
-        "user_js_readability_preferences", JSON
+    readability_preferences: Mapped[dict[str, Any] | None] = mapped_column(
+        "user_js_readability_preferences", JSON, nullable=True
     )
     email_notifications: Mapped[bool] = mapped_column(
         "user_bl_email_notifications", Boolean, default=True, nullable=False
+    )
+    reading_settings: Mapped[dict[str, Any] | None] = mapped_column(
+        "user_js_reading_settings",
+        JSON,
+        nullable=True,
+        default={
+            "font_size": "Medium",
+            "fonts": {"headline": "System", "body": "System", "caption": "System"},
+            "font_weight": "Normal",
+            "line_spacing": "Standard",
+            "color_mode": "Default",
+        },
     )
 
     avatar = Column("user_tx_avatar", String(500), nullable=True)
@@ -57,14 +68,6 @@ class User(BaseModel):
         "coun_cd_id", Integer, ForeignKey("country.coun_cd_id"), nullable=True
     )
     country: Mapped["Country | None"] = relationship("Country", uselist=False)
-
-    # User settings fields
-    email_notifications = Column(
-        "user_bl_email_notifications", Boolean, default=True, nullable=False
-    )
-    readability_preferences = Column(
-        "user_js_readability_preferences", JSON, nullable=True
-    )
 
     preferred_news_categories = Column(
         "user_js_preferred_news_categories", JSON, nullable=True

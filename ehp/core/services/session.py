@@ -1,9 +1,9 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, status
 
 from ehp.base.jwt_helper import JWTClaimsPayload
-from ehp.base.middleware import authenticated_session
+from ehp.base.middleware import authorized_session
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.repositories.authentication import AuthenticationRepository
 from ehp.db.db_manager import ManagedAsyncSession
@@ -12,7 +12,7 @@ from ehp.utils.constants import AUTH_ACTIVE
 
 async def get_authentication(
     request: Request,
-    auth_claims: Annotated[JWTClaimsPayload, Depends(authenticated_session)],
+    auth_claims: Annotated[JWTClaimsPayload | None, Depends(authorized_session)],
     db_session: ManagedAsyncSession,
 ) -> Authentication:
     """
@@ -26,6 +26,11 @@ async def get_authentication(
     Returns:
         The Authentication object of the authenticated user.
     """
+    if auth_claims is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authenticated",
+        )
     if hasattr(request.state, "user"):
         user: Authentication = request.state.user
     else:
