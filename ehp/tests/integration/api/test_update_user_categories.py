@@ -67,7 +67,7 @@ class TestUpdateUserCategoriesEndpoint:
     ):
         """Test successful update of user preferred categories."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Mock user repository
         with patch('ehp.core.services.user.UserRepository') as mock_user_repo:
@@ -85,7 +85,7 @@ class TestUpdateUserCategoriesEndpoint:
                 mock_repo_instance.update_preferred_news_categories.return_value = updated_user
                 
                 # Override FastAPI dependencies
-                test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+                test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
                 test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
                 
                 try:
@@ -121,7 +121,7 @@ class TestUpdateUserCategoriesEndpoint:
     ):
         """Test update with empty category list."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         with patch('ehp.core.services.user.UserRepository') as mock_user_repo:
             with patch('ehp.db.db_manager.ManagedAsyncSession'):
@@ -138,7 +138,7 @@ class TestUpdateUserCategoriesEndpoint:
                 mock_repo_instance.update_preferred_news_categories.return_value = updated_user
                 
                 # Override FastAPI dependencies
-                test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+                test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
                 test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
                 
                 try:
@@ -169,7 +169,7 @@ class TestUpdateUserCategoriesEndpoint:
     ):
         """Test that duplicate category IDs are removed."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         with patch('ehp.core.services.user.UserRepository') as mock_user_repo:
             with patch('ehp.db.db_manager.ManagedAsyncSession'):
@@ -186,7 +186,7 @@ class TestUpdateUserCategoriesEndpoint:
                 mock_repo_instance.update_preferred_news_categories.return_value = updated_user
                 
                 # Override FastAPI dependencies
-                test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+                test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
                 test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
                 
                 try:
@@ -216,7 +216,7 @@ class TestUpdateUserCategoriesEndpoint:
     ):
         """Test update with invalid category IDs."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         from ehp.core.repositories.user import InvalidNewsCategoryException
         
         with patch('ehp.core.services.user.UserRepository') as mock_user_repo:
@@ -230,7 +230,7 @@ class TestUpdateUserCategoriesEndpoint:
                 )
                 
                 # Override FastAPI dependencies
-                test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+                test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
                 test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
                 
                 try:
@@ -257,7 +257,7 @@ class TestUpdateUserCategoriesEndpoint:
     ):
         """Test update when user is not found."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         from ehp.core.repositories.user import UserNotFoundException
         
         with patch('ehp.core.services.user.UserRepository') as mock_user_repo:
@@ -271,7 +271,7 @@ class TestUpdateUserCategoriesEndpoint:
                 )
                 
                 # Override FastAPI dependencies
-                test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+                test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
                 test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
                 
                 try:
@@ -313,10 +313,10 @@ class TestUpdateUserCategoriesEndpoint:
     ):
         """Test update with invalid payload structure."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -343,10 +343,10 @@ class TestUpdateUserCategoriesEndpoint:
     ):
         """Test update with non-list category_ids."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -373,7 +373,7 @@ class TestUpdateUserCategoriesEndpoint:
     ):
         """Test update when database error occurs."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         with patch('ehp.core.services.user.UserRepository') as mock_user_repo:
             with patch('ehp.db.db_manager.ManagedAsyncSession'):
@@ -384,7 +384,7 @@ class TestUpdateUserCategoriesEndpoint:
                 mock_repo_instance.update_preferred_news_categories.side_effect = Exception("Database connection error")
                 
                 # Override FastAPI dependencies
-                test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+                test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
                 test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
                 
                 try:

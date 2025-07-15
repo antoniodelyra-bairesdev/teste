@@ -1489,3 +1489,62 @@ class TestWikiClipEndpoints:
         # Assertions
         assert response.status_code == 500
         assert "Could not fetch saved pages due to an error" in response.json()["detail"]
+
+    # ============================================================================
+    # SCHEMA VALIDATION TESTS
+    # ============================================================================
+
+    def test_trending_wikiclip_schema_summary_field_validator(self):
+        """Test that TrendingWikiClipSchema summary field_validator is working."""
+        from ehp.core.models.schema.wikiclip import TrendingWikiClipSchema, SUMMARY_MAX_LENGTH
+        
+        # Test with summary at max length - field_validator should process it
+        exact_summary = "A" * SUMMARY_MAX_LENGTH  # Exactly 200 characters
+        valid_data = {
+            "wikiclip_id": 1,
+            "title": "Test Article",
+            "summary": exact_summary,
+            "created_at": datetime.now(),
+        }
+        
+        schema = TrendingWikiClipSchema(**valid_data)
+        
+        # The field_validator should process it (no change since it's exactly max_length)
+        assert len(schema.summary) == SUMMARY_MAX_LENGTH
+        assert not schema.summary.endswith("...")
+
+    def test_trending_wikiclip_schema_summary_short(self):
+        """Test TrendingWikiClipSchema summary shorter than SUMMARY_MAX_LENGTH."""
+        from ehp.core.models.schema.wikiclip import TrendingWikiClipSchema
+        
+        # Test with short summary
+        short_summary = "Short summary"
+        valid_data = {
+            "wikiclip_id": 1,
+            "title": "Test Article",
+            "summary": short_summary,
+            "created_at": datetime.now(),
+        }
+        
+        schema = TrendingWikiClipSchema(**valid_data)
+        
+        # Should not be truncated
+        assert schema.summary == short_summary
+        assert not schema.summary.endswith("...")
+
+    def test_trending_wikiclip_schema_summary_max_length_validation(self):
+        """Test that TrendingWikiClipSchema enforces max_length constraint."""
+        from ehp.core.models.schema.wikiclip import TrendingWikiClipSchema
+        
+        # Test with summary exceeding max_length - should fail validation
+        long_summary = "A" * 201  # 201 characters, exceeds max_length=200
+        valid_data = {
+            "wikiclip_id": 1,
+            "title": "Test Article",
+            "summary": long_summary,
+            "created_at": datetime.now(),
+        }
+        
+        # Should raise validation error due to max_length constraint
+        with pytest.raises(Exception):  # Pydantic validation error
+            TrendingWikiClipSchema(**valid_data)

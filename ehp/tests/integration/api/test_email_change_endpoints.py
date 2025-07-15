@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
+from ehp.base.jwt_helper import ACCESS_TOKEN_EXPIRE, JWTGenerator
 from ehp.base.session import SessionManager
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.models.db.profile import Profile
@@ -90,7 +91,8 @@ class TestEmailChangeEndpoints:
                 include_auth=True,
             )
 
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
+
         response_data = response.json()
         assert "Verification email sent" in response_data["message"]
         assert response_data["code"] == 200
@@ -193,16 +195,27 @@ class TestEmailChangeEndpoints:
         # First, setup a pending email change
         auth_repo = AuthenticationRepository(test_db_manager.get_session())
         auth = await auth_repo.get_by_id(123)
+        assert auth is not None
 
-        token = generate_email_change_token()
+        token = (
+            SessionManager()
+            .create_session(
+                str(auth.id),
+                "confirmed@example.com",
+                with_refresh=False,
+            )
+            .access_token
+        )
         auth.pending_email = "confirmed@example.com"
         auth.email_change_token = token
         auth.email_change_token_expires = datetime.now() + timedelta(minutes=30)
-        await auth_repo.update(auth)
+        _ = await auth_repo.update(auth)
 
         # Confirm the change
         with patch("ehp.core.services.user.send_notification", return_value=True):
-            response = authenticated_client.get(f"/users/confirm-email?token={token}")
+            response = authenticated_client.get(
+                "/users/confirm-email", params={"x-token-auth": token}
+            )
 
         assert response.status_code == 200
         response_data = response.json()
@@ -211,6 +224,7 @@ class TestEmailChangeEndpoints:
 
         # Verify email was updated and pending fields cleared
         updated_auth = await auth_repo.get_by_id(123)
+        assert updated_auth is not None
         assert updated_auth.user_email == "confirmed@example.com"
         assert updated_auth.pending_email is None
         assert updated_auth.email_change_token is None
@@ -220,10 +234,12 @@ class TestEmailChangeEndpoints:
         self, authenticated_client: EHPTestClient
     ):
         """Test email change confirmation with invalid token."""
-        response = authenticated_client.get("/users/confirm-email?token=invalid_token")
+        response = authenticated_client.get(
+            "/users/confirm-email", params={"x-token-auth": "invalid-token"}
+        )
 
-        assert response.status_code == 400
-        assert "Invalid or expired token" in response.json()["detail"]
+        assert response.status_code == 401
+        assert "Invalid or expired session" in response.json()["detail"]
 
     async def test_confirm_email_change_expired_token(
         self, authenticated_client: EHPTestClient, test_db_manager: DBManager
@@ -233,21 +249,34 @@ class TestEmailChangeEndpoints:
         auth_repo = AuthenticationRepository(test_db_manager.get_session())
         auth = await auth_repo.get_by_id(123)
 
-        token = generate_email_change_token()
+        assert auth is not None
+        # Create an expired token
+        token = (
+            SessionManager()
+            .create_session(
+                str(auth.id),
+                "expired@example.com",
+                with_refresh=False,
+            )
+            .access_token
+        )
         auth.pending_email = "expired@example.com"
         auth.email_change_token = token
-        auth.email_change_token_expires = datetime.now() - timedelta(
-            minutes=10
+        auth.email_change_token_expires = (
+            datetime.now() - ACCESS_TOKEN_EXPIRE - timedelta(minutes=1)
         )  # Expired
-        await auth_repo.update(auth)
+        _ = await auth_repo.update(auth)
 
-        response = authenticated_client.get(f"/users/confirm-email?token={token}")
+        response = authenticated_client.get(
+            "/users/confirm-email", params={"x-token-auth": token}
+        )
 
-        assert response.status_code == 400
-        assert "Token has expired" in response.json()["detail"]
+        assert response.status_code == 401
+        assert "Invalid or expired session" in response.json()["detail"]
 
         # Verify expired token was cleaned up
         updated_auth = await auth_repo.get_by_id(123)
+        assert updated_auth is not None
         assert updated_auth.pending_email is None
         assert updated_auth.email_change_token is None
 
@@ -258,14 +287,25 @@ class TestEmailChangeEndpoints:
         # Setup token without pending email
         auth_repo = AuthenticationRepository(test_db_manager.get_session())
         auth = await auth_repo.get_by_id(123)
+        assert auth is not None
 
-        token = generate_email_change_token()
+        token = (
+            SessionManager()
+            .create_session(
+                str(auth.id),
+                "example@test.com",
+                with_refresh=False,
+            )
+            .access_token
+        )
         auth.email_change_token = token
         auth.email_change_token_expires = datetime.now() + timedelta(minutes=30)
         # Don't set pending_email
-        await auth_repo.update(auth)
+        _ = await auth_repo.update(auth)
 
-        response = authenticated_client.get(f"/users/confirm-email?token={token}")
+        response = authenticated_client.get(
+            "/users/confirm-email", params={"x-token-auth": token}
+        )
 
         assert response.status_code == 400
         assert "No pending email change found" in response.json()["detail"]
@@ -276,7 +316,7 @@ class TestEmailChangeEndpoints:
         """Test email change confirmation without token parameter."""
         response = authenticated_client.get("/users/confirm-email")
 
-        assert response.status_code == 422  # Missing required parameter
+        assert response.status_code == 403
 
     async def test_update_user_settings_success(
         self, authenticated_client: EHPTestClient, test_db_manager: DBManager
@@ -319,7 +359,9 @@ class TestEmailChangeEndpoints:
         assert user.email_notifications is True
         assert user.readability_preferences is None  # Should remain unchanged
 
-    async def test_update_user_settings_empty(self, authenticated_client: EHPTestClient):
+    async def test_update_user_settings_empty(
+        self, authenticated_client: EHPTestClient
+    ):
         """Test user settings update with empty payload."""
         response = authenticated_client.put(
             "/users/settings",
@@ -359,19 +401,26 @@ class TestEmailChangeEndpoints:
         # Get the token from database
         auth_repo = AuthenticationRepository(test_db_manager.get_session())
         auth = await auth_repo.get_by_id(123)
+        assert auth is not None
+
         token = auth.email_change_token
 
         # Step 2: Confirm email change
         with patch("ehp.core.services.user.send_notification", return_value=True):
             confirm_response = authenticated_client.get(
-                f"/users/confirm-email?token={token}"
+                "/users/confirm-email",
+                include_auth=False,
+                params={"x-token-auth": token},
             )
 
         assert confirm_response.status_code == 200
-        assert "Email address updated successfully" in confirm_response.json()["message"]
+        assert (
+            "Email address updated successfully" in confirm_response.json()["message"]
+        )
 
         # Verify final state
         updated_auth = await auth_repo.get_by_id(123)
+        assert updated_auth is not None
         assert updated_auth.user_email == new_email
         assert updated_auth.pending_email is None
         assert updated_auth.email_change_token is None

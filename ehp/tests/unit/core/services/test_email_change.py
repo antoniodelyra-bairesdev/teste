@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from fastapi import HTTPException
 import pytest
@@ -52,7 +52,12 @@ class TestEmailChangeService:
         token2 = generate_email_change_token()
         assert token != token2
 
-    async def test_request_email_change_success(self, mock_auth_context, mock_auth_user):
+    async def test_request_email_change_success(
+        self,
+        mock_auth_context,
+        mock_auth_user,
+        mock_redis,
+    ):
         """Test successful email change request."""
         mock_session = AsyncMock()
         mock_repo = AsyncMock(spec=AuthenticationRepository)
@@ -103,13 +108,18 @@ class TestEmailChangeService:
             "ehp.core.services.user.AuthenticationRepository", return_value=mock_repo
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await request_email_change(request_data, mock_session, mock_auth_context)
+                await request_email_change(
+                    request_data, mock_session, mock_auth_context
+                )
 
         assert exc_info.value.status_code == 409
         assert "already in use" in exc_info.value.detail
 
     async def test_request_email_change_email_send_failure(
-        self, mock_auth_context, mock_auth_user
+        self,
+        mock_auth_context,
+        mock_auth_user,
+        mock_redis,
     ):
         """Test email change request when email sending fails."""
         mock_session = AsyncMock()
@@ -159,7 +169,7 @@ class TestEmailChangeService:
             "ehp.core.services.user.AuthenticationRepository", return_value=mock_repo
         ):
             with patch("ehp.core.services.user.send_notification", return_value=True):
-                result = await confirm_email_change("valid_token", mock_session)
+                result = await confirm_email_change(auth, mock_session)
 
         assert result.message == "Email address updated successfully"
         assert result.code == 200
@@ -177,12 +187,14 @@ class TestEmailChangeService:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
+        auth = Mock(spec=Authentication)
+        auth.email_change_token_expires = None
 
         with pytest.raises(HTTPException) as exc_info:
-            await confirm_email_change("invalid_token", mock_session)
+            _ = await confirm_email_change(auth, mock_session)
 
-        assert exc_info.value.status_code == 400
-        assert "Invalid or expired token" in exc_info.value.detail
+        assert exc_info.value.status_code == 401
+        assert "Invalid or expired session" in exc_info.value.detail
 
     async def test_confirm_email_change_expired_token(self):
         """Test email change confirmation with expired token."""
@@ -195,7 +207,8 @@ class TestEmailChangeService:
             user_email="old@example.com",
             pending_email="new@example.com",
             email_change_token="expired_token",
-            email_change_token_expires=datetime.now() - timedelta(minutes=10),  # Expired
+            email_change_token_expires=datetime.now()
+            - timedelta(minutes=10),  # Expired
         )
 
         mock_result = MagicMock()
@@ -204,16 +217,19 @@ class TestEmailChangeService:
 
         mock_repo.update.return_value = None
 
+        auth = Mock(spec=Authentication)
+        auth.email_change_token_expires = datetime.now() - timedelta(minutes=10)
+
         with patch(
             "ehp.core.services.user.AuthenticationRepository", return_value=mock_repo
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await confirm_email_change("expired_token", mock_session)
+                _ = await confirm_email_change(auth, mock_session)
 
-        assert exc_info.value.status_code == 400
-        assert "Token has expired" in exc_info.value.detail
+        assert exc_info.value.status_code == 401
+        assert "Invalid or expired session" in exc_info.value.detail
         # Should clean up expired token
-        mock_repo.update.assert_called_once()
+        mock_repo.update.assert_called_once_with(auth)
         assert auth.pending_email is None
         assert auth.email_change_token is None
 
@@ -235,7 +251,7 @@ class TestEmailChangeService:
         mock_session.execute.return_value = mock_result
 
         with pytest.raises(HTTPException) as exc_info:
-            await confirm_email_change("valid_token", mock_session)
+            _ = await confirm_email_change(auth, mock_session)
 
         assert exc_info.value.status_code == 400
         assert "No pending email change found" in exc_info.value.detail

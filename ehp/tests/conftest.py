@@ -106,7 +106,9 @@ async def test_db_manager(test_db_session) -> AsyncGenerator[DBManager, None]:
 # Mock Redis client
 @pytest.fixture
 def mock_redis():
-    return FakeRedis(decode_responses=True)
+    fakeredis = FakeRedis(decode_responses=True)
+    with patch("ehp.base.session.get_redis_client", return_value=fakeredis):
+        yield fakeredis
 
 
 # FastAPI testing client

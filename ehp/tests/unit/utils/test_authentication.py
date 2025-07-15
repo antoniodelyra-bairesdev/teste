@@ -17,27 +17,27 @@ from ehp.utils.authentication import (
 
 
 @pytest.mark.unit
-async def test_needs_api_key_valid():
+def test_needs_api_key_valid():
     """Test that needs_api_key passes with valid key."""
     # This should not raise an exception
-    assert await needs_api_key(settings.API_KEY_VALUE) is None
+    assert needs_api_key(settings.API_KEY_VALUE) is None
 
 
 @pytest.mark.unit
-async def test_needs_api_key_invalid():
+def test_needs_api_key_invalid():
     """Test that needs_api_key raises exception with invalid key."""
     with pytest.raises(HTTPException) as excinfo:
-        await needs_api_key("invalid-key")
+        needs_api_key("invalid-key")
 
     assert excinfo.value.status_code == 400
     assert "Invalid X-Api-Key header" in excinfo.value.detail
 
 
 @pytest.mark.unit
-async def test_needs_api_key_missing():
+def test_needs_api_key_missing():
     """Test that needs_api_key raises exception with missing key."""
     with pytest.raises(HTTPException) as excinfo:
-        await needs_api_key(None)
+        needs_api_key(None)
 
     assert excinfo.value.status_code == 400
     assert "Invalid X-Api-Key header" in excinfo.value.detail

@@ -62,10 +62,10 @@ class TestPasswordChangeEndpoint:
     ):
         """Test password change with wrong current password."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -99,10 +99,10 @@ class TestPasswordChangeEndpoint:
     ):
         """Test password change with new password that's too short."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -133,10 +133,10 @@ class TestPasswordChangeEndpoint:
     ):
         """Test password change with new password missing uppercase letter."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -166,10 +166,10 @@ class TestPasswordChangeEndpoint:
     ):
         """Test password change with new password missing lowercase letter."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -199,10 +199,10 @@ class TestPasswordChangeEndpoint:
     ):
         """Test password change when new password and confirm password don't match."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -244,9 +244,9 @@ class TestPasswordChangeEndpoint:
                 
                 # Override FastAPI dependencies
                 from ehp.core.services.session import get_authentication
-                from ehp.base.middleware import authenticated_session
+                from ehp.base.middleware import authorized_session
                 
-                test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+                test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
                 test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
                 
                 try:
@@ -284,9 +284,9 @@ class TestPasswordChangeEndpoint:
                 
                 # Override FastAPI dependencies
                 from ehp.core.services.session import get_authentication
-                from ehp.base.middleware import authenticated_session
+                from ehp.base.middleware import authorized_session
                 
-                test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+                test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
                 test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
                 
                 try:
@@ -344,9 +344,9 @@ class TestPasswordChangeEndpoint:
             
             # Override FastAPI dependencies
             from ehp.core.services.session import get_authentication
-            from ehp.base.middleware import authenticated_session
+            from ehp.base.middleware import authorized_session
             
-            test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+            test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
             test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
             
             try:
@@ -381,9 +381,9 @@ class TestPasswordChangeEndpoint:
             
             # Override FastAPI dependencies
             from ehp.core.services.session import get_authentication
-            from ehp.base.middleware import authenticated_session
+            from ehp.base.middleware import authorized_session
             
-            test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+            test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
             test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
             
             try:
@@ -411,9 +411,9 @@ class TestPasswordChangeEndpoint:
             
             # Override FastAPI dependencies
             from ehp.core.services.session import get_authentication
-            from ehp.base.middleware import authenticated_session
+            from ehp.base.middleware import authorized_session
             
-            test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+            test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
             test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
             
             try:
@@ -433,10 +433,10 @@ class TestPasswordChangeEndpoint:
     def test_password_change_missing_fields(self, test_client: EHPTestClient, mock_authentication):
         """Test password change with missing required fields."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:

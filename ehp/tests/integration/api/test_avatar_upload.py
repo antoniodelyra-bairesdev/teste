@@ -76,10 +76,10 @@ class TestAvatarUploadEndpoint:
     def avatar_upload_mocks(self, test_client: EHPTestClient, mock_authentication, mock_user, aws_mock):
         """Fixture to setup common mocks for avatar upload tests."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Setup dependency overrides
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         # Setup context managers for mocking (only what we need to mock)
@@ -157,13 +157,13 @@ class TestAvatarUploadEndpoint:
     ):
         """Test avatar upload with file exceeding size limit."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Create large image (> 500KB)
         large_image_data = b'x' * (600 * 1024)  # 600KB
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -186,13 +186,13 @@ class TestAvatarUploadEndpoint:
     ):
         """Test avatar upload with invalid file format."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Create text file instead of image
         text_data = b"This is not an image file"
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
@@ -215,13 +215,13 @@ class TestAvatarUploadEndpoint:
     ):
         """Test avatar upload with invalid image content."""
         from ehp.core.services.session import get_authentication
-        from ehp.base.middleware import authenticated_session
+        from ehp.base.middleware import authorized_session
         
         # Create fake PNG file (wrong content)
         fake_image_data = b"fake png content"
         
         # Override FastAPI dependencies
-        test_client.app.dependency_overrides[authenticated_session] = lambda: {"sub": str(mock_authentication.id)}
+        test_client.app.dependency_overrides[authorized_session] = lambda: {"sub": str(mock_authentication.id)}
         test_client.app.dependency_overrides[get_authentication] = lambda: mock_authentication
         
         try:
