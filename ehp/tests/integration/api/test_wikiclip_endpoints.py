@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, patch, MagicMock
+import json
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+import zipfile
 
-from fastapi import HTTPException
+import odfdo
 import pytest
+from fastapi import HTTPException
 
-from ehp.base.session import SessionManager
-from ehp.core.models.db.authentication import Authentication
-from ehp.core.models.db.user import User
 from ehp.core.models.db.wikiclip import WikiClip
 from ehp.core.models.schema.paging import PagedResponse
 from ehp.core.models.schema.wikiclip import (
@@ -14,60 +15,28 @@ from ehp.core.models.schema.wikiclip import (
     WikiClipResponseSchema,
     WikiClipSearchSchema,
     WikiClipSearchSortStrategy,
-    MyWikiPagesResponseSchema,
 )
-from ehp.core.repositories.authentication import AuthenticationRepository
-from ehp.core.repositories.base import BaseRepository
 from ehp.core.repositories.wikiclip import WikiClipRepository
+from ehp.core.services.documents import (
+    DOCXExtractor,
+    HTMLExtractor,
+    JSONExtractor,
+    ODTExtractor,
+    PDFExtractor,
+    XMLExtractor,
+    as_bytesio,
+)
 from ehp.db.db_manager import DBManager
+from ehp.tests.integration.api.conftest import USER_ID, AuthenticatedClientProxy
 from ehp.tests.utils.test_client import EHPTestClient
-from ehp.utils.authentication import hash_password
 
 
 @pytest.mark.integration
 class TestWikiClipEndpoints:
     """Integration tests for WikiClip API endpoints."""
 
-    @pytest.fixture
-    async def authenticated_client(
-        self,
-        test_client: EHPTestClient,
-        setup_jwt,
-        test_db_manager: DBManager,
-    ):
-        auth_repository = AuthenticationRepository(
-            test_db_manager.get_session()
-        )
-        user_repository = BaseRepository(test_db_manager.get_session(), User)
-        await auth_repository.create(self.authentication)
-        await user_repository.create(self.user)
-        self.authentication.user = self.user
-        session_manager = SessionManager()
-        authenticated_token = session_manager.create_session(
-            self.authentication.id,
-            self.authentication.user_email,
-            with_refresh=False,
-        )
-        test_client.auth_token = authenticated_token.access_token
-        yield test_client
-
     def setup_method(self):
         """Setup test data for each test method."""
-        self.authentication = Authentication(
-            id=123,
-            user_name="mockuser",
-            user_email="mock@example.com",
-            user_pwd=hash_password("Te$tPassword123"),  # Using hash_password utility
-            is_active="1",
-            is_confirmed="1",
-            retry_count=0,
-        )
-        self.user = User(
-            id=123,
-            full_name="Mock User",
-            created_at=datetime.now(),
-            auth_id=self.authentication.id,
-        )
         self.test_datetime = datetime(2024, 6, 16, 12, 0, 0)
         self.valid_wikiclip_data = {
             "title": "Test WikiClip Article",
@@ -83,13 +52,14 @@ class TestWikiClipEndpoints:
             id=1,
             title="Test WikiClip Article",
             content="This is a test content for the WikiClip article.",
+            summary="This is a test content for the WikiClip article.",
             url="https://example.com/test-article",
             created_at=self.test_datetime,
             related_links=[
                 "https://example.com/related1",
                 "https://example.com/related2",
             ],
-            user_id=self.user.id,
+            user_id=USER_ID,
         )
 
     # ============================================================================
@@ -302,7 +272,7 @@ class TestWikiClipEndpoints:
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
     def test_save_wikiclip_without_related_links(
-        self, mock_repo_class, authenticated_client: EHPTestClient
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
     ):
         """Test WikiClip creation without related links (optional field)."""
         # Setup mock repository
@@ -313,10 +283,11 @@ class TestWikiClipEndpoints:
             id=2,
             title="Test WikiClip No Links",
             content="Test content without related links",
+            summary="Test content without related links",
             url="https://example.com/no-links",
             created_at=self.test_datetime,
             related_links=None,
-            user_id=self.user.id,
+            user_id=authenticated_client.user.id,
         )
         mock_repo.create.return_value = created_wikiclip_no_links
 
@@ -553,7 +524,7 @@ class TestWikiClipEndpoints:
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
     def test_duplicate_check_duplicate_found(
-        self, mock_repo_class, authenticated_client: EHPTestClient
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
     ):
         """Test duplicate check when a duplicate is found."""
         # Setup mock repository
@@ -566,7 +537,7 @@ class TestWikiClipEndpoints:
             content="Duplicate content",
             url="https://example.com/test-article",
             created_at=duplicate_created_at,
-            user_id=self.user.id,
+            user_id=authenticated_client.user.id,
         )
 
         mock_repo = AsyncMock(spec=WikiClipRepository)
@@ -859,7 +830,7 @@ class TestWikiClipEndpoints:
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
     def test_search_wikiclips_returns_entries_without_filters(
-        self, mock_repo_class, authenticated_client: EHPTestClient
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
     ):
         """Test searching WikiClips without any filters."""
         # Setup mock repository
@@ -876,7 +847,7 @@ class TestWikiClipEndpoints:
                 url="https://example.com/another-article",
                 created_at=self.test_datetime,
                 related_links=[],
-                user_id=self.user.id,
+                user_id=authenticated_client.user.id,
             ),
         ]
         mock_repo.search.return_value = mock_search_results
@@ -931,7 +902,7 @@ class TestWikiClipEndpoints:
         assert response.status_code == 422
 
     async def test_search_wikiclips_with_filters(
-        self, authenticated_client: EHPTestClient, test_db_manager: DBManager
+        self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager
     ):
         """Test searching WikiClips with various filters."""
         # Setup mock repository
@@ -954,7 +925,7 @@ class TestWikiClipEndpoints:
                 url="https://example.com/test-article-1",
                 created_at=datetime(2024, 6, 16, 12, 0, 0),
                 related_links=[],
-                user_id=self.user.id,
+                user_id=authenticated_client.user.id,
             ),
             WikiClip(
                 id=2,
@@ -963,7 +934,7 @@ class TestWikiClipEndpoints:
                 url="https://example.com/test-article-2",
                 created_at=datetime(2024, 6, 17, 12, 0, 0),
                 related_links=[],
-                user_id=self.user.id,
+                user_id=authenticated_client.user.id,
             ),
             WikiClip(
                 id=3,
@@ -972,7 +943,7 @@ class TestWikiClipEndpoints:
                 url="https://example.com/test-article-3",
                 created_at=datetime(2024, 6, 18, 12, 0, 0),
                 related_links=[],
-                user_id=self.user.id,
+                user_id=authenticated_client.user.id,
             ),
             userless_clip,
         ]
@@ -1020,7 +991,7 @@ class TestWikiClipEndpoints:
             assert clip.created_at >= datetime(2024, 6, 16, 12, 0, 0)
 
     async def test_search_wikiclips_no_results(
-        self, authenticated_client: EHPTestClient, test_db_manager: DBManager
+        self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager
     ):
         """Test searching WikiClips with no results."""
         # Setup mock repository
@@ -1034,7 +1005,7 @@ class TestWikiClipEndpoints:
                 url="https://example.com/existing-article",
                 created_at=datetime(2024, 6, 16, 12, 0, 0),
                 related_links=[],
-                user_id=self.user.id,
+                user_id=authenticated_client.user.id,
             )
         )
 
@@ -1074,7 +1045,7 @@ class TestWikiClipEndpoints:
         assert response_data.filters.filter_by_user is True
 
     async def test_search_wikiclips_second_page(
-        self, authenticated_client: EHPTestClient, test_db_manager: DBManager
+        self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager
     ):
         """Test searching WikiClips with pagination on the second page."""
         # Setup mock repository
@@ -1088,7 +1059,7 @@ class TestWikiClipEndpoints:
                 url=f"https://example.com/test-article-{i}",
                 created_at=datetime(2024, 6, 16, 12, 0, 0),
                 related_links=[],
-                user_id=self.user.id,
+                user_id=authenticated_client.user.id,
             )
             for i in range(1, 21)  # Create 20 clips
         ]
@@ -1132,7 +1103,7 @@ class TestWikiClipEndpoints:
             assert clip.id <= 20
 
     async def test_search_wikiclips_created_at_asc(
-        self, authenticated_client: EHPTestClient, test_db_manager: DBManager
+        self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager
     ):
         """Test searching WikiClips with creation date ascending sort."""
         # Setup mock repository
@@ -1146,7 +1117,7 @@ class TestWikiClipEndpoints:
                 url=f"https://example.com/test-article-{i}",
                 created_at=datetime(2024, 6, 16, 12, 0, 0) - timedelta(days=i),
                 related_links=[],
-                user_id=self.user.id,
+                user_id=authenticated_client.user.id,
             )
             for i in range(1, 6)  # Create 5 clips with different dates
         ]
@@ -1194,7 +1165,7 @@ class TestWikiClipEndpoints:
             previous_date = clip.created_at
 
     async def test_get_suggested_wikiclips_returns_paged_list(
-        self, authenticated_client: EHPTestClient, test_db_manager: DBManager
+        self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager
     ):
         # Setup mock repository
         wikiclip_repo = WikiClipRepository(test_db_manager.get_session())
@@ -1209,26 +1180,22 @@ class TestWikiClipEndpoints:
                 url=f"https://example.com/test-article-{i}",
                 created_at=datetime(2024, 6, 16, 12, 0, 0) - timedelta(days=i),
                 related_links=[],
-                user_id=self.user.id,
+                user_id=authenticated_client.user.id,
             )
             for i in range(1, 6)  # Create 5 clips with different dates
         ]
         # Save test data
         for clip in clips:
-            _= await wikiclip_repo.create(clip)
+            _ = await wikiclip_repo.create(clip)
 
-        search = {
-            "page": "1",
-            "size": "5"
-        }
+        search = {"page": "1", "size": "5"}
 
         response = authenticated_client.get(
             "/wikiclip/suggested", params=search, include_auth=True
         )
 
-
         assert response.status_code == 200, response.text
-        
+
         payload = response.json()
         data = payload["data"]
 
@@ -1241,11 +1208,13 @@ class TestWikiClipEndpoints:
     # ============================================================================
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
-    def test_get_my_pages_success(self, mock_repo_class, authenticated_client):
-        user = self.user
+    def test_get_my_pages_success(
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
+    ):
+        user = authenticated_client.user
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
-        
+
         sample_pages = [
             WikiClip(
                 id=1,
@@ -1260,13 +1229,13 @@ class TestWikiClipEndpoints:
                 id=2,
                 title="My Second Save",
                 content="Another article I saved for later reading.",
-                url="https://example.com/second", 
+                url="https://example.com/second",
                 created_at=datetime(2024, 1, 1, 12, 0, 0),
                 user_id=user.id,
                 related_links=[],
             ),
         ]
-        
+
         mock_repo.count_user_pages.return_value = 2
         mock_repo.get_user_pages.return_value = sample_pages
 
@@ -1274,24 +1243,24 @@ class TestWikiClipEndpoints:
 
         assert response.status_code == 200
         response_data = response.json()
-        
+
         # Verify response structure
         assert "data" in response_data
         assert "total_count" in response_data
         assert "page" in response_data
         assert "page_size" in response_data
         assert "filters" in response_data
-        
+
         # Verify pagination
         assert response_data["total_count"] == 2
         assert response_data["page"] == 1
         assert response_data["page_size"] == 20  # default page size
         assert response_data["filters"] is None
-        
+
         # Verify data structure
         pages = response_data["data"]
         assert len(pages) == 2
-        
+
         # Check first page
         first_page = pages[0]
         assert first_page["wikiclip_id"] == 1
@@ -1307,11 +1276,13 @@ class TestWikiClipEndpoints:
         mock_repo.get_user_pages.assert_called_once_with(user.id, page=1, page_size=20)
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
-    def test_get_my_pages_with_pagination(self, mock_repo_class, authenticated_client):
-        user = self.user
+    def test_get_my_pages_with_pagination(
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
+    ):
+        user = authenticated_client.user
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
-        
+
         # Create sample page for page 2
         sample_page = WikiClip(
             id=3,
@@ -1322,25 +1293,24 @@ class TestWikiClipEndpoints:
             user_id=user.id,
             related_links=[],
         )
-        
+
         mock_repo.count_user_pages.return_value = 15  # Total of 15 pages
         mock_repo.get_user_pages.return_value = [sample_page]
 
         # Make request with pagination
         response = authenticated_client.get(
-            "/wikiclip/my?page=2&size=5", 
-            include_auth=True
+            "/wikiclip/my?page=2&size=5", include_auth=True
         )
 
         # Assertions
         assert response.status_code == 200
         response_data = response.json()
-        
+
         # Verify pagination was applied
         assert response_data["total_count"] == 15
         assert response_data["page"] == 2
         assert response_data["page_size"] == 5
-        
+
         # Verify repository was called with correct parameters
         mock_repo.get_user_pages.assert_called_once_with(user.id, page=2, page_size=5)
 
@@ -1351,11 +1321,13 @@ class TestWikiClipEndpoints:
         assert response.status_code == 403
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
-    def test_get_my_pages_empty_result(self, mock_repo_class, authenticated_client):
-        user = self.user
+    def test_get_my_pages_empty_result(
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
+    ):
+        user = authenticated_client.user
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
-        
+
         mock_repo.count_user_pages.return_value = 0
         mock_repo.get_user_pages.return_value = []
 
@@ -1365,18 +1337,20 @@ class TestWikiClipEndpoints:
         # Assertions
         assert response.status_code == 200
         response_data = response.json()
-        
+
         assert response_data["total_count"] == 0
         assert response_data["data"] == []
         assert response_data["page"] == 1
         assert response_data["page_size"] == 20
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
-    def test_get_my_pages_content_summary_truncation(self, mock_repo_class, authenticated_client):
-        user = self.user
+    def test_get_my_pages_content_summary_truncation(
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
+    ):
+        user = authenticated_client.user
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
-        
+
         # Create page with long content
         long_content = "A" * 250  # 250 characters
         sample_page = WikiClip(
@@ -1388,7 +1362,7 @@ class TestWikiClipEndpoints:
             user_id=user.id,
             related_links=[],
         )
-        
+
         mock_repo.count_user_pages.return_value = 1
         mock_repo.get_user_pages.return_value = [sample_page]
 
@@ -1398,22 +1372,26 @@ class TestWikiClipEndpoints:
         # Assertions
         assert response.status_code == 200
         response_data = response.json()
-        
+
         page = response_data["data"][0]
         summary = page["content_summary"]
-        
+
         # Should be truncated to 200 chars max
         assert len(summary) <= 200
         assert summary.endswith("...")
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
-    def test_get_my_pages_sections_count(self, mock_repo_class, authenticated_client):
-        user = self.user
+    def test_get_my_pages_sections_count(
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
+    ):
+        user = authenticated_client.user
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
-        
+
         # Create page with multiple sections (paragraphs)
-        content_with_sections = "Section 1 content.\n\nSection 2 content.\n\nSection 3 content."
+        content_with_sections = (
+            "Section 1 content.\n\nSection 2 content.\n\nSection 3 content."
+        )
         sample_page = WikiClip(
             id=1,
             title="Multi-section Article",
@@ -1423,7 +1401,7 @@ class TestWikiClipEndpoints:
             user_id=user.id,
             related_links=[],
         )
-        
+
         mock_repo.count_user_pages.return_value = 1
         mock_repo.get_user_pages.return_value = [sample_page]
 
@@ -1433,23 +1411,25 @@ class TestWikiClipEndpoints:
         # Assertions
         assert response.status_code == 200
         response_data = response.json()
-        
+
         page = response_data["data"][0]
         # Should count 3 sections based on \n\n separation
         assert page["sections_count"] == 3
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
-    def test_get_my_pages_with_tags(self, mock_repo_class, authenticated_client):
-        user = self.user
+    def test_get_my_pages_with_tags(
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
+    ):
+        user = authenticated_client.user
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
-        
+
         # Create mock tags
         mock_tag1 = MagicMock()
         mock_tag1.description = "Technology"
         mock_tag2 = MagicMock()
         mock_tag2.description = "Programming"
-        
+
         # Create page with tags
         sample_page = WikiClip(
             id=1,
@@ -1462,7 +1442,7 @@ class TestWikiClipEndpoints:
         )
         # Mock the tags relationship
         sample_page.tags = [mock_tag1, mock_tag2]
-        
+
         mock_repo.count_user_pages.return_value = 1
         mock_repo.get_user_pages.return_value = [sample_page]
 
@@ -1472,13 +1452,15 @@ class TestWikiClipEndpoints:
         # Assertions
         assert response.status_code == 200
         response_data = response.json()
-        
+
         page = response_data["data"][0]
         assert page["tags"] == ["Technology", "Programming"]
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
-    def test_get_my_pages_repository_error(self, mock_repo_class, authenticated_client):
-        user = self.user
+    def test_get_my_pages_repository_error(
+        self, mock_repo_class, authenticated_client: AuthenticatedClientProxy
+    ):
+        user = authenticated_client.user
         mock_repo = AsyncMock(spec=WikiClipRepository)
         mock_repo_class.return_value = mock_repo
         mock_repo.count_user_pages.side_effect = Exception("Database error")
@@ -1488,7 +1470,9 @@ class TestWikiClipEndpoints:
 
         # Assertions
         assert response.status_code == 500
-        assert "Could not fetch saved pages due to an error" in response.json()["detail"]
+        assert (
+            "Could not fetch saved pages due to an error" in response.json()["detail"]
+        )
 
     # ============================================================================
     # SCHEMA VALIDATION TESTS
@@ -1496,8 +1480,11 @@ class TestWikiClipEndpoints:
 
     def test_trending_wikiclip_schema_summary_field_validator(self):
         """Test that TrendingWikiClipSchema summary field_validator is working."""
-        from ehp.core.models.schema.wikiclip import TrendingWikiClipSchema, SUMMARY_MAX_LENGTH
-        
+        from ehp.core.models.schema.wikiclip import (
+            SUMMARY_MAX_LENGTH,
+            TrendingWikiClipSchema,
+        )
+
         # Test with summary at max length - field_validator should process it
         exact_summary = "A" * SUMMARY_MAX_LENGTH  # Exactly 200 characters
         valid_data = {
@@ -1506,9 +1493,9 @@ class TestWikiClipEndpoints:
             "summary": exact_summary,
             "created_at": datetime.now(),
         }
-        
+
         schema = TrendingWikiClipSchema(**valid_data)
-        
+
         # The field_validator should process it (no change since it's exactly max_length)
         assert len(schema.summary) == SUMMARY_MAX_LENGTH
         assert not schema.summary.endswith("...")
@@ -1516,7 +1503,7 @@ class TestWikiClipEndpoints:
     def test_trending_wikiclip_schema_summary_short(self):
         """Test TrendingWikiClipSchema summary shorter than SUMMARY_MAX_LENGTH."""
         from ehp.core.models.schema.wikiclip import TrendingWikiClipSchema
-        
+
         # Test with short summary
         short_summary = "Short summary"
         valid_data = {
@@ -1525,26 +1512,627 @@ class TestWikiClipEndpoints:
             "summary": short_summary,
             "created_at": datetime.now(),
         }
-        
+
         schema = TrendingWikiClipSchema(**valid_data)
-        
+
         # Should not be truncated
         assert schema.summary == short_summary
         assert not schema.summary.endswith("...")
 
-    def test_trending_wikiclip_schema_summary_max_length_validation(self):
-        """Test that TrendingWikiClipSchema enforces max_length constraint."""
-        from ehp.core.models.schema.wikiclip import TrendingWikiClipSchema
+
+@pytest.mark.integration
+class TestWikiClipDocumentEndpoint:
+    def test_save_wikiclip_document_fails_for_unsupported_file_type(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document fails for unsupported file types."""
+        # Attempt to save a document with an unsupported file type
+
+        file = tmp_path / "test.unsupported"
+        with open(file, "wb") as f:
+            _ = f.write(b"This is a test file with an unsupported extension.")
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_text())},
+            include_auth=True,
+        )
+
+        # Should return 422 for unsupported document type
+        assert response.status_code == 422
+        assert "Unsupported document type" in response.json()["detail"]
+
+    def test_save_wikiclip_document_succeeds_with_valid_txt(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document succeeds with a valid .txt file."""
+        # Create a valid .txt file
+        file = tmp_path / "test.txt"
+        with open(file, "w") as f:
+            _ = f.write("This is a test text file for WikiClip.")
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 201 Created for successful upload
+        assert response.status_code == 201
+
+        content = WikiClipResponseSchema.model_validate_json(response.content)
+        assert content.title == "test.txt"
+        assert content.content == "This is a test text file for WikiClip."
+
+    def test_save_wikiclip_document_succeeds_with_valid_json(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document succeeds with a valid .json file."""
+        # Create a valid .json file
+        file = tmp_path / "test.json"
+        file_contents = {"title": "Test JSON", "content": "This is a test JSON file."}
+
+        with open(file, "w") as f:
+            json.dump(file_contents, f)
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 201 Created for successful upload
+        assert response.status_code == 201
+
+        content = WikiClipResponseSchema.model_validate_json(response.content)
+        assert content.title == "test.json"
+        assert (
+            content.content
+            == JSONExtractor().extract_text_from_map(file_contents)
+            == "title: Test JSON\ncontent: This is a test JSON file."
+        )
+
+    @pytest.mark.parametrize(
+        "file_contents,expected_content",
+        [
+            ('"root_string"', '"root_string"'),
+            ('["item1", "item2"]', '["item1","item2"]'),
+            ("true", "true"),
+            ("42", "42"),
+        ],
+        ids=[
+            "string",
+            "array",
+            "boolean",
+            "number",
+        ],
+    )
+    def test_save_wikiclip_document_works_for_valid_json_non_resolveable_to_mapping(
+        self,
+        authenticated_client: AuthenticatedClientProxy,
+        tmp_path: Path,
+        file_contents: str,
+        expected_content: str,
+    ):
+        """Test that saving a WikiClip document works for valid JSON that is not resolvable to a mapping."""
+        # Create a valid .json file
+        file = tmp_path / "test.json"
+        with open(file, "w") as f:
+            _ = f.write(file_contents)
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 201 Created for successful upload
+        assert response.status_code == 201
+        response_body = response.json()
+        content = WikiClipResponseSchema.model_construct(
+            **response_body
+        )  # We want to avoid the input sanitization here
+        assert content.title == "test.json"
+        assert (
+            content.content
+            == JSONExtractor()
+            .extract(as_bytesio(expected_content.encode()), file.name)
+            .content
+            == f"fileContents: {expected_content}"
+        )
+
+    def test_save_wikiclip_document_fails_for_invalid_json(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document fails for an invalid .json file."""
+        # Create an invalid .json file (not a valid JSON structure)
+        file = tmp_path / "invalid.json"
+        with open(file, "w") as f:
+            _ = f.write("This is not a valid JSON content.")
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 422 for invalid JSON format
+        assert response.status_code == 422
+        assert "Invalid JSON format" in response.json()["detail"]
+
+    def test_save_wikiclip_document_succeeds_for_valid_xml(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document succeeds with a valid .xml file."""
+        # Create a valid .xml file
+        file = tmp_path / "test.xml"
+        xml_content = """<?xml version="1.0"?>
+        <article>
+            <title>Test XML</title>
+            <content>This is a test XML file.</content>
+        </article>"""
+        xml_reader = as_bytesio(xml_content.encode())
+        extractor = XMLExtractor()
+
+        with open(file, "w") as f:
+            _ = f.write(xml_content)
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 201 Created for successful upload
+        assert response.status_code == 201
+
+        content = WikiClipResponseSchema.model_validate_json(response.content)
+        assert content.title == "test.xml"
+        assert (
+            content.content
+            == extractor.extract(xml_reader, file.name).content
+            == "article: \ntitle: Test XML\ncontent: This is a test XML file."
+        )
+
+    def test_save_wikiclip_document_fails_for_invalid_xml(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document fails for an invalid .xml file."""
+        # Create an invalid .xml file (not well-formed XML)
+        file = tmp_path / "invalid.xml"
+        with open(file, "w") as f:
+            _ = f.write("This is not a valid XML content.")
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 422 for invalid XML format
+        assert response.status_code == 422
+        assert "Invalid XML format" in response.json()["detail"]
+
+    def test_save_wikiclip_document_succeeds_for_valid_html(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document succeeds with a valid .html file."""
+        # Create a valid .html file
+        file = tmp_path / "test.html"
+        html_content = """<!DOCTYPE html>
+        <html>
+            <head><title>Test HTML</title></head>
+            <body><p>This is a test HTML file.</p></body>
+        </html>"""
+        html_reader = as_bytesio(html_content.encode())
+        extractor = HTMLExtractor()
+
+        with open(file, "w") as f:
+            _ = f.write(html_content)
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 201 Created for successful upload
+        assert response.status_code == 201
+
+        content = WikiClipResponseSchema.model_validate_json(response.content)
+        assert content.title == "test.html"
+        assert (
+            content.content
+            == extractor.extract(html_reader, file.name).content
+            == "html: \nhead: \ntitle: Test HTML\nbody: \np: This is a test HTML file."
+        )
+
+    def test_save_wikiclip_document_fails_for_invalid_html(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document fails for an invalid .html file."""
+        # Create an invalid .html file (not well-formed HTML)
+        file = tmp_path / "invalid.html"
+        with open(file, "w") as f:
+            _ = f.write("This is not a valid HTML content.")
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 422 for invalid HTML format
+        assert response.status_code == 422
+        assert "Invalid HTML format" in response.json()["detail"]
+
+    def test_save_wikiclip_document_succeeds_for_valid_odt(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document succeeds with a valid .odt file."""
+        # Create a valid .odt file
+        file = tmp_path / "test.odt"
+        doc = odfdo.Document()
+        doc.body.append(odfdo.Paragraph("Example ODT content."))
+        doc.save(file)
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 201 Created for successful upload
+        assert response.status_code == 201
+
+        content = WikiClipResponseSchema.model_validate_json(response.content)
+        assert content.title == "test.odt"
+        assert (
+            content.content
+            == ODTExtractor().extract(as_bytesio(file.read_bytes()), file.name).content
+            == "Example ODT content."
+        )
+
+    def test_save_wikiclip_document_fails_for_invalid_odt(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document fails for an invalid .odt file."""
+        # Create an invalid .odt file (not a valid ODT structure)
+        file = tmp_path / "invalid.odt"
+        with open(file, "w") as f:
+            _ = f.write("This is not a valid ODT content.")
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 422 for invalid ODT format
+        assert response.status_code == 422
+        assert "Invalid ODT format" in response.json()["detail"]
+
+    def test_save_wikiclip_document_fails_for_valid_zip_but_invalid_odt(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document fails for a valid .zip file that does not contain a valid ODT."""
+        # Create a valid .zip file that does not contain a valid ODT
+        file = tmp_path / "test.odt"
+        with zipfile.ZipFile(file, "w") as zipf:
+            zipf.writestr("test.txt", "This is a test text file inside a zip.")
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 422 for invalid ODT format
+        assert response.status_code == 422
+        assert "Invalid ODT format" in response.json()["detail"]
+
+    def test_save_wikiclip_document_succeeds_for_valid_docx(
+        self, authenticated_client: AuthenticatedClientProxy
+    ):
+        """Test that saving a WikiClip document succeeds with a valid .docx file."""
+        # Load a valid .docx file
+        file = Path(__file__).parent / "test_document.docx"
+        if not file.exists():
+            pytest.skip(
+                "Test document file not found, create a valid test_document.docx to test this file.s"
+            )
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 201 Created for successful upload
+        assert response.status_code == 201
+
+        content = WikiClipResponseSchema.model_validate_json(response.content)
+        assert content.title == file.name
+        assert (
+            content.content
+            == DOCXExtractor().extract(as_bytesio(file.read_bytes()), file.name).content
+        )
+
+    def test_save_wikiclip_document_fails_for_invalid_docx(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document fails for an invalid .docx file."""
+        # Create an invalid .docx file (not a valid DOCX structure)
+        file = tmp_path / "invalid.docx"
+        with open(file, "w") as f:
+            _ = f.write("This is not a valid DOCX content.")
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 422 for invalid DOCX format
+        assert response.status_code == 422
+        assert "Invalid DOCX format" in response.json()["detail"]
+
+    def test_save_wikiclip_document_succeeds_for_valid_pdf(
+        self, authenticated_client: AuthenticatedClientProxy
+    ):
+        """Test that saving a WikiClip document succeeds with a valid .pdf file."""
+        # Load a valid .pdf file
+        file = Path(__file__).parent / "test_document.pdf"
+        if not file.exists():
+            pytest.skip(
+                "Test document file not found, create a valid test_document.pdf to test this file."
+            )
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 201 Created for successful upload
+        assert response.status_code == 201
+
+        content = WikiClipResponseSchema.model_validate_json(response.content)
+        assert content.title == file.name
+        assert (
+            content.content
+            == PDFExtractor().extract(as_bytesio(file.read_bytes()), file.name).content
+        )
+
+    def test_save_wikiclip_document_fails_for_invalid_pdf(
+        self, authenticated_client: AuthenticatedClientProxy, tmp_path: Path
+    ):
+        """Test that saving a WikiClip document fails for an invalid .pdf file."""
+        # Create an invalid .pdf file (not a valid PDF structure)
+        file = tmp_path / "invalid.pdf"
+        with open(file, "w") as f:
+            _ = f.write("This is not a valid PDF content.")
+
+        response = authenticated_client.post(
+            "/wikiclip/document",
+            files={"document": (file.name, file.read_bytes())},
+            include_auth=True,
+        )
+
+        # Should return 422 for invalid PDF format
+        assert response.status_code == 422
+        assert "Invalid PDF format" in response.json()["detail"]
+
+
+@pytest.mark.integration
+class TestWikiClipPaginationFields:
+    """Integration tests for PagedResponse pagination fields (total_pages, has_next, has_previous)."""
+
+    @pytest.fixture
+    async def user_with_25_wikiclips(
+        self,
+        authenticated_client: AuthenticatedClientProxy,
+        test_db_manager: DBManager,
+    ):
+        """Create 25 wikiclips for the authenticated user for pagination testing."""
+        # Use the authenticated client's user to create wikiclips
+        user = authenticated_client.user
+        wikiclip_repository = WikiClipRepository(test_db_manager.get_session())
         
-        # Test with summary exceeding max_length - should fail validation
-        long_summary = "A" * 201  # 201 characters, exceeds max_length=200
-        valid_data = {
-            "wikiclip_id": 1,
-            "title": "Test Article",
-            "summary": long_summary,
-            "created_at": datetime.now(),
+        # Create 25 wikiclips for the authenticated user
+        wikiclips = []
+        for i in range(1, 26):
+            wikiclip = WikiClip(
+                id=i + 1000,  # Use higher IDs to avoid conflicts
+                title=f"News {i}",
+                content=f"This is the content for news article {i}. It contains some sample text for testing pagination.",
+                summary=f"This is the content for news article {i}. It contains some sample text for testing pagination."[:100],
+                url=f"https://example.com/news-{i}",
+                created_at=datetime(2024, 1, 1, 12, i % 60, 0),  # Different times for ordering
+                user_id=user.id,
+                related_links=[],
+            )
+            wikiclips.append(wikiclip)
+            await wikiclip_repository.create(wikiclip)
+        
+        return {
+            "user": user,
+            "wikiclips": wikiclips,
+            "client": authenticated_client,
         }
+
+    async def test_trending_wikiclips_pagination_fields(self, user_with_25_wikiclips):
+        """Test pagination fields in trending wikiclips endpoint."""
+        client = user_with_25_wikiclips["client"]
         
-        # Should raise validation error due to max_length constraint
-        with pytest.raises(Exception):  # Pydantic validation error
-            TrendingWikiClipSchema(**valid_data)
+        # Test first page (10 items per page)
+        response = client.get("/wikiclip/trending?page=1&size=10", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Check pagination fields are present
+        assert "total_pages" in data
+        assert "has_next" in data 
+        assert "has_previous" in data
+        
+        # Verify values for first page
+        assert data["total_pages"] == 3  # 25 items / 10 per page = 3 pages
+        assert data["has_next"] is True  # Page 1 of 3 should have next
+        assert data["has_previous"] is False  # Page 1 should not have previous
+        assert data["page"] == 1
+        assert data["page_size"] == 10
+        assert data["total_count"] == 25
+        assert len(data["data"]) == 10
+        
+        # Test middle page
+        response = client.get("/wikiclip/trending?page=2&size=10", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["total_pages"] == 3
+        assert data["has_next"] is True  # Page 2 of 3 should have next
+        assert data["has_previous"] is True  # Page 2 should have previous
+        assert data["page"] == 2
+        assert len(data["data"]) == 10
+        
+        # Test last page
+        response = client.get("/wikiclip/trending?page=3&size=10", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["total_pages"] == 3
+        assert data["has_next"] is False  # Page 3 of 3 should not have next
+        assert data["has_previous"] is True  # Page 3 should have previous
+        assert data["page"] == 3
+        assert len(data["data"]) == 5  # Last page has remaining 5 items
+
+    async def test_search_wikiclips_pagination_fields(self, user_with_25_wikiclips):
+        """Test pagination fields in search wikiclips endpoint."""
+        client = user_with_25_wikiclips["client"]
+        
+        # Test with page size of 7 to get different pagination
+        response = client.get("/wikiclip/?page=1&size=7", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Check pagination fields are present
+        assert "total_pages" in data
+        assert "has_next" in data
+        assert "has_previous" in data
+        
+        # Verify values: 25 items / 7 per page = 4 pages (ceil)
+        assert data["total_pages"] == 4  
+        assert data["has_next"] is True
+        assert data["has_previous"] is False
+        assert data["page"] == 1
+        assert data["page_size"] == 7
+        assert data["total_count"] == 25
+        assert len(data["data"]) == 7
+        
+        # Test last page with partial data
+        response = client.get("/wikiclip/?page=4&size=7", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["total_pages"] == 4
+        assert data["has_next"] is False
+        assert data["has_previous"] is True
+        assert data["page"] == 4
+        assert len(data["data"]) == 4  # 25 - (3 * 7) = 4 items on last page
+
+    async def test_suggested_wikiclips_pagination_fields(self, user_with_25_wikiclips):
+        """Test pagination fields in suggested wikiclips endpoint."""
+        client = user_with_25_wikiclips["client"]
+        
+        # Test with page size of 15
+        response = client.get("/wikiclip/suggested?page=1&size=15", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Check pagination fields are present
+        assert "total_pages" in data
+        assert "has_next" in data
+        assert "has_previous" in data
+        
+        # Verify values: 25 items / 15 per page = 2 pages
+        assert data["total_pages"] == 2
+        assert data["has_next"] is True
+        assert data["has_previous"] is False
+        assert data["page"] == 1
+        assert data["page_size"] == 15
+        assert data["total_count"] == 25
+        assert len(data["data"]) == 15
+        
+        # Test second page
+        response = client.get("/wikiclip/suggested?page=2&size=15", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["total_pages"] == 2
+        assert data["has_next"] is False
+        assert data["has_previous"] is True
+        assert data["page"] == 2
+        assert len(data["data"]) == 10  # Remaining 10 items
+
+    async def test_my_pages_pagination_fields(self, user_with_25_wikiclips):
+        """Test pagination fields in my pages endpoint."""
+        client = user_with_25_wikiclips["client"]
+        
+        # Test with page size of 8
+        response = client.get("/wikiclip/my?page=1&size=8", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Check pagination fields are present
+        assert "total_pages" in data
+        assert "has_next" in data
+        assert "has_previous" in data
+        
+        # Verify values: 25 items / 8 per page = 4 pages (ceil)
+        assert data["total_pages"] == 4
+        assert data["has_next"] is True
+        assert data["has_previous"] is False
+        assert data["page"] == 1
+        assert data["page_size"] == 8
+        assert data["total_count"] == 25
+        assert len(data["data"]) == 8
+
+    async def test_edge_case_single_page(self, user_with_25_wikiclips):
+        """Test pagination fields when all items fit on one page."""
+        client = user_with_25_wikiclips["client"]
+        
+        # Request page size larger than total items
+        response = client.get("/wikiclip/trending?page=1&size=30", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Should be single page with no navigation
+        assert data["total_pages"] == 1
+        assert data["has_next"] is False
+        assert data["has_previous"] is False
+        assert data["page"] == 1
+        assert data["page_size"] == 30
+        assert data["total_count"] == 25
+        assert len(data["data"]) == 25
+
+    async def test_edge_case_zero_results(self, user_with_25_wikiclips):
+        """Test pagination fields when no results are found."""
+        client = user_with_25_wikiclips["client"]
+        
+        # Search for non-existent content
+        response = client.get("/wikiclip/?search_term=nonexistent&page=1&size=10", include_auth=True)
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Should handle zero results correctly
+        assert data["total_pages"] == 0  # No pages when no results
+        assert data["has_next"] is False
+        assert data["has_previous"] is False
+        assert data["page"] == 1
+        assert data["page_size"] == 10
+        assert data["total_count"] == 0
+        assert len(data["data"]) == 0
