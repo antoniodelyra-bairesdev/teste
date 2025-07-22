@@ -13,8 +13,9 @@ class WikiClip(BaseModel):
 
     id: Mapped[int] = mapped_column("wiki_cd_id", Integer, primary_key=True)
     title: Mapped[str] = mapped_column("wiki_tx_title", String(500), nullable=False)
+    summary: Mapped[str] = mapped_column("wiki_tx_summary", Text, nullable=True)
     content: Mapped[str] = mapped_column("wiki_tx_content", Text, nullable=False)
-    url: Mapped[str] = mapped_column("wiki_tx_url", String(2000), nullable=False)
+    url: Mapped[str | None] = mapped_column("wiki_tx_url", String(2000), nullable=True)
     related_links: Mapped[dict | list | None] = mapped_column("wiki_js_related_links", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         "wiki_dt_created_at",
@@ -34,4 +35,5 @@ class WikiClip(BaseModel):
         order_by="Tag.description",
     )
     analyses = relationship("Analysis", back_populates="wikiclip")
+    details = relationship("WikiClipDetail", back_populates="wikiclip")
     user = relationship("User")

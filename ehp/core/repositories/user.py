@@ -151,18 +151,28 @@ class UserRepository(BaseRepository[User]):
             if not user:
                 raise UserNotFoundException(f"User with id {user_id} not found")
             
-            # Return existing settings or defaults
-            if user.reading_settings:
-                return user.reading_settings
-            
-            # Return default settings
-            return {
+            # Default settings
+            default_settings = {
                 "font_size": "Medium",
                 "fonts": {"headline": "System", "body": "System", "caption": "System"},
                 "font_weight": "Normal",
                 "line_spacing": "Standard",
                 "color_mode": "Default",
             }
+            
+            # Return existing settings merged with defaults, or just defaults
+            if user.reading_settings:
+                # Merge user settings with defaults
+                merged_settings = default_settings.copy()
+                merged_settings.update(user.reading_settings)
+                
+                # Handle nested fonts dictionary merge
+                if "fonts" in user.reading_settings and "fonts" in merged_settings:
+                    merged_settings["fonts"].update(user.reading_settings["fonts"])
+                
+                return merged_settings
+            
+            return default_settings
         except UserNotFoundException:
             raise
         except Exception as e:

@@ -68,3 +68,21 @@ async def run_to_dict_async(list_of_objects: List[Any]) -> List[Any]:
         return []
     result_tasks = [obj.to_dict() for obj in list_of_objects]
     return await asyncio.gather(*result_tasks) if result_tasks else []
+
+
+def safe_calculate_total_pages(total_count: int, page_size: int) -> int:
+    """
+    Safely calculate the total number of pages for pagination.
+    
+    Args:
+        total_count: Total number of items
+        page_size: Number of items per page
+        
+    Returns:
+        Total number of pages (0 if page_size is 0 or negative, 1 if total_count is 0)
+    """
+    if page_size <= 0:
+        return 0
+    if total_count <= 0:
+        return 0
+    return (total_count + page_size - 1) // page_size

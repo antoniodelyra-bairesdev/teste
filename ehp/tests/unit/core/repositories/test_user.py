@@ -581,15 +581,17 @@ class TestUserRepository:
                 id=123,
                 auth_id=456,
                 full_name="Test User",
-                reading_settings="invalid_json_string",  # Invalid JSON
+                reading_settings={"invalid_key": "invalid_value"},  # Valid dict but with unexpected structure
             )
             repository.get_by_id = AsyncMock(return_value=user_with_invalid_settings)
 
             # Act
             result = await repository.get_reading_settings(123)
 
-            # Assert - should still return the value as-is since we don't validate JSON structure
-            assert result == "invalid_json_string"
+            # Assert - should merge with defaults and include the invalid key
+            assert result["invalid_key"] == "invalid_value"
+            assert result["font_size"] == "Medium"  # Default value
+            assert result["fonts"]["headline"] == "System"  # Default value
 
         async def test_update_reading_settings_success(
             self, repository: UserRepository, mock_session: AsyncMock, sample_user: User

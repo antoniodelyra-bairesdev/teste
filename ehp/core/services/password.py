@@ -70,7 +70,7 @@ async def request_password_reset(
             email_body = "You have requested a password reset. Please use the following link to reset your password."
 
             mailer = UserMailer(auth.user)
-            success = mailer.send_mail(
+            success = await mailer.send_mail(
                 email_subject,
                 email_body,
                 [auth.user_email],

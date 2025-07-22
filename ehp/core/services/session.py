@@ -6,6 +6,7 @@ from ehp.base.jwt_helper import JWTClaimsPayload
 from ehp.base.middleware import authorized_session
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.repositories.authentication import AuthenticationRepository
+from ehp.core.repositories.user import UserRepository
 from ehp.db.db_manager import ManagedAsyncSession
 from ehp.utils.constants import AUTH_ACTIVE
 
@@ -50,4 +51,34 @@ async def get_authentication(
     return user
 
 
+async def get_user_reading_settings(
+    user: Annotated[Authentication, Depends(get_authentication)],
+    db_session: ManagedAsyncSession,
+) -> dict:
+    """
+    Dependency to get the authenticated user's reading settings.
+
+    Args:
+        user: The authenticated user's Authentication object.
+        db_session: The SQLAlchemy asynchronous session.
+
+    Returns:
+        Dictionary containing the user's reading settings or default values.
+    """
+    try:
+        user_repo = UserRepository(db_session)
+        settings = await user_repo.get_reading_settings(user.user.id)
+        return settings
+    except Exception:
+        # Return default settings if there's any error
+        return {
+            "font_size": "Medium",
+            "fonts": {"headline": "System", "body": "System", "caption": "System"},
+            "font_weight": "Normal",
+            "line_spacing": "Standard",
+            "color_mode": "Default",
+        }
+
+
 AuthContext = Annotated[Authentication, Depends(get_authentication)]
+ReadingSettingsContext = Annotated[dict, Depends(get_user_reading_settings)]

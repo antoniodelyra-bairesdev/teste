@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 import uuid
@@ -12,7 +13,6 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from ehp.base.jwt_helper import JWTClaimsPayload
 from ehp.base.session import SessionManager
 from ehp.config import settings
-from ehp.utils.authentication import needs_api_key
 from ehp.utils.base import log_error
 
 auth_handler = APIKeyHeader(name="x-token-auth", auto_error=False)
@@ -64,6 +64,7 @@ def authorized_session(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
         )
     elif x_api_key is not None:
+        from ehp.utils.authentication import needs_api_key
         needs_api_key(x_api_key)
     elif x_token_auth_query is None:
         raise HTTPException(

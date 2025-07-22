@@ -3,8 +3,8 @@ import os
 from fakeredis import FakeRedis
 
 os.environ["AWS_ENDPOINT_URL"] = ""
-from collections.abc import Generator
-from typing import Any, AsyncGenerator, Dict
+from collections.abc import Generator, AsyncGenerator
+from typing import Any, Dict
 from unittest.mock import patch
 
 import pytest

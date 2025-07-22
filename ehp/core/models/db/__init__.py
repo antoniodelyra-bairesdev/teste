@@ -7,6 +7,7 @@ from .news_category import NewsCategory
 from .profile import Profile
 from .tag import Tag
 from .user import User
+from .wikiclip_detail import WikiClipDetail
 from .wikiclip import WikiClip
 
 
@@ -21,4 +22,5 @@ __all__ = [
     "Tag",
     "User",
     "WikiClip",
+    "WikiClipDetail",
 ]

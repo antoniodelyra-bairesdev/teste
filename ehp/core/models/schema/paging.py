@@ -18,12 +18,21 @@ class PageModel(BaseModel):
     auth_id: Optional[int] = None
 
 
+class ResponseMetadata(BaseModel):
+    """Metadata for API responses including reading settings."""
+    reading_settings: Optional[dict] = None
+
+
 class PagedResponse(BaseModel, Generic[T, S]):
     data: list[T]
     total_count: int
     page: int
     page_size: int
+    total_pages: int
+    has_next: bool
+    has_previous: bool
     filters: S | None = None
+    metadata: Optional[ResponseMetadata] = None
 
 
 @dataclass

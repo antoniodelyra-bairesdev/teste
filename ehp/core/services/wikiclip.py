@@ -1,27 +1,50 @@
+import os
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 
 from ehp.core.models.db.wikiclip import WikiClip
 from ehp.core.models.schema.duplicate_check import DuplicateCheckResponseSchema
-from ehp.core.models.schema.paging import PagedQuery, PagedResponse
+from ehp.core.models.schema.paging import PagedQuery, PagedResponse, ResponseMetadata
 from ehp.core.models.schema.wikiclip import (
     MyWikiPagesResponseSchema,
     SummarizedWikiclipResponseSchema,
     TrendingWikiClipSchema,
     WikiClipResponseSchema,
+    WikiClipResponseWithSettings,
     WikiClipSchema,
     WikiClipSearchSchema,
 )
 from ehp.core.repositories.wikiclip import WikiClipRepository
-from ehp.core.services.session import AuthContext, get_authentication
+from ehp.core.services.documents import DocumentExtractor
+from ehp.core.services.session import AuthContext, ReadingSettingsContext, get_authentication
 from ehp.db.db_manager import ManagedAsyncSession
-from ehp.utils.base import log_error
+from ehp.utils.base import log_error, safe_calculate_total_pages
 from ehp.utils.cache import cache_response, invalidate_user_cache
 from ehp.utils.constants import HTTP_INTERNAL_SERVER_ERROR
 
 
 router = APIRouter(prefix="/wikiclip", tags=["wikiclip"])
+
+
+def generate_summary(content: str) -> str:
+    """Generate a summary from content by taking first 100 characters and adding ellipsis."""
+    # This logic must be replaced after with an AI generated summary
+    if not content:
+        return ""
+    
+    if len(content) <= 100:
+        return content
+    
+    return content[:100] + "..."
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -34,11 +57,16 @@ async def save_wikiclip(
 
     try:
         repository = WikiClipRepository(db_session)
+        
+        # Generate summary from content
+        summary = generate_summary(wikiclip_data.content)
+        
         # Create new WikiClip
         wikiclip = WikiClip(
             title=wikiclip_data.title,
             content=wikiclip_data.content,
-            url=str(wikiclip_data.url),
+            summary=summary,
+            url=str(wikiclip_data.url) if wikiclip_data.url else None,
             related_links=wikiclip_data.related_links,
             user_id=user.user.id,
         )
@@ -57,6 +85,7 @@ async def save_wikiclip(
             related_links=created_wikiclip.related_links,
             created_at=created_wikiclip.created_at,
             content=created_wikiclip.content,
+            summary=created_wikiclip.summary
         )
 
     except HTTPException:
@@ -198,6 +227,7 @@ async def duplicate_check_endpoint(
 async def get_my_saved_pages(
     db_session: ManagedAsyncSession,
     user: AuthContext,
+    reading_settings: ReadingSettingsContext,
     page: int = Query(1, ge=1, description="Page number, starting from 1"),
     size: int = Query(20, ge=1, le=100, description="Number of items per page"),
 ) -> PagedResponse[MyWikiPagesResponseSchema, None]:
@@ -257,6 +287,9 @@ async def get_my_saved_pages(
         "total_count": 50,
         "page": 1,
         "page_size": 20,
+        "total_pages": 1,
+        "has_next": false,
+        "has_previous": false,
         "filters": null
     }
     ```
@@ -302,12 +335,17 @@ async def get_my_saved_pages(
                 )
             )
 
+        total_pages = safe_calculate_total_pages(total_count, size)
         return PagedResponse[MyWikiPagesResponseSchema, None](
             data=response_data,
             total_count=total_count,
             page=page,
             page_size=size,
+            total_pages=total_pages,
+            has_next=page < total_pages,
+            has_previous=page > 1,
             filters=None,
+            metadata=ResponseMetadata(reading_settings=reading_settings),
         )
 
     except Exception as e:
@@ -326,6 +364,7 @@ async def get_my_saved_pages(
 async def get_trending_wikiclips(
     db_session: ManagedAsyncSession,
     user: AuthContext,
+    reading_settings: ReadingSettingsContext,
     paging: Annotated[PagedQuery, Depends()],
 ) -> PagedResponse[TrendingWikiClipSchema, None]:
     """Get trending WikiClips ordered by publication date descending."""
@@ -337,12 +376,13 @@ async def get_trending_wikiclips(
             user.user.id, page=paging.page, page_size=paging.size
         )
 
+        total_pages = safe_calculate_total_pages(total_count, paging.size)
         return PagedResponse[TrendingWikiClipSchema, None](
             data=[
                 TrendingWikiClipSchema(
                     wikiclip_id=wikiclip.id,
                     title=wikiclip.title,
-                    summary=wikiclip.content,
+                    summary=wikiclip.summary,
                     created_at=wikiclip.created_at,
                 )
                 for wikiclip in wikiclips
@@ -350,7 +390,11 @@ async def get_trending_wikiclips(
             total_count=total_count,
             page=paging.page,
             page_size=paging.size,
+            total_pages=total_pages,
+            has_next=paging.page < total_pages,
+            has_previous=paging.page > 1,
             filters=None,
+            metadata=ResponseMetadata(reading_settings=reading_settings),
         )
 
     except Exception as e:
@@ -365,6 +409,7 @@ async def get_trending_wikiclips(
 async def fetch_wikiclips(
     db_session: ManagedAsyncSession,
     user: AuthContext,
+    reading_settings: ReadingSettingsContext,
     search: Annotated[WikiClipSearchSchema, Depends()],
 ) -> PagedResponse[WikiClipResponseSchema, WikiClipSearchSchema]:
     """Fetch paginated WikiClips for the authenticated user."""
@@ -373,6 +418,7 @@ async def fetch_wikiclips(
         repository = WikiClipRepository(db_session)
         total_count = await repository.count(user.user.id, search)
         wikiclips = await repository.search(user.user.id, search)
+        total_pages = safe_calculate_total_pages(total_count, search.size)
         return PagedResponse[WikiClipResponseSchema, WikiClipSearchSchema](
             data=[
                 WikiClipResponseSchema(
@@ -387,7 +433,11 @@ async def fetch_wikiclips(
             page=search.page,
             page_size=search.size,
             total_count=total_count,
+            total_pages=total_pages,
+            has_next=search.page < total_pages,
+            has_previous=search.page > 1,
             filters=search,
+            metadata=ResponseMetadata(reading_settings=reading_settings),
         )
 
     except Exception as e:
@@ -402,12 +452,14 @@ async def fetch_wikiclips(
 async def get_suggested_wikiclips(
     user: AuthContext,
     db_session: ManagedAsyncSession,
+    reading_settings: ReadingSettingsContext,
     search: Annotated[PagedQuery, Depends()],
 ) -> PagedResponse[SummarizedWikiclipResponseSchema, PagedQuery]:
     repository = WikiClipRepository(db_session)
     total_count = await repository.count_suggested(user.user.id)
     wikiclips = await repository.get_suggested(user.user.id, search)
 
+    total_pages = safe_calculate_total_pages(total_count, search.size)
     return PagedResponse[SummarizedWikiclipResponseSchema, PagedQuery](
         data=[
             SummarizedWikiclipResponseSchema(
@@ -423,8 +475,38 @@ async def get_suggested_wikiclips(
         total_count=total_count,
         page=search.page,
         page_size=search.size,
+        total_pages=total_pages,
+        has_next=search.page < total_pages,
+        has_previous=search.page > 1,
         filters=search,
+        metadata=ResponseMetadata(reading_settings=reading_settings),
     )
+
+
+@router.post("/document", status_code=status.HTTP_201_CREATED)
+async def save_wikiclip_document(
+    auth: AuthContext,
+    db_session: ManagedAsyncSession,
+    document: UploadFile,
+):
+    # Coverage is ignored here because the test client does not support unnamed files.
+    if not document.filename: # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Document filename is required",
+        )
+    supported_extensions = list(DocumentExtractor)
+    _, extension = os.path.splitext(document.filename)
+    extension = extension.lower().lstrip(".")
+    if extension not in supported_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported document type: {extension}. Supported types: {', '.join(supported_extensions)}",
+        )
+
+    extractor = DocumentExtractor.get_extractor(extension)
+    wikiclip = extractor.extract(document.file, document.filename)
+    return await save_wikiclip(wikiclip, db_session, auth)
 
 
 @router.get(
@@ -459,25 +541,29 @@ async def get_wikiclip_content(
 
 @router.get(
     "/{wikiclip_id}",
-    response_model=WikiClipResponseSchema,
+    response_model=WikiClipResponseWithSettings,
     dependencies=[Depends(get_authentication)],
 )
 async def get_wikiclip(
-    wikiclip_id: int, db_session: ManagedAsyncSession
-) -> WikiClipResponseSchema:
+    wikiclip_id: int, 
+    db_session: ManagedAsyncSession,
+    user: AuthContext,
+    reading_settings: ReadingSettingsContext,
+) -> WikiClipResponseWithSettings:
     """Get a WikiClip by ID."""
 
     try:
         repository = WikiClipRepository(db_session)
         wikiclip = await repository.get_by_id_or_404(wikiclip_id)
 
-        return WikiClipResponseSchema(
+        return WikiClipResponseWithSettings(
             id=wikiclip.id,
             title=wikiclip.title,
             url=wikiclip.url,
             related_links=wikiclip.related_links,
             created_at=wikiclip.created_at,
             content=wikiclip.content,
+            reading_settings=reading_settings,
         )
 
     except HTTPException:

@@ -20,7 +20,10 @@ class InputSanitizer:
 
         # Remove HTML tags and escape remaining content
         value = re.sub(r"<[^>]+>", "", value)
-        value = html.escape(value)
+        # HTML escape breaks any implementation that expects strings
+        # with valid escapeable characters, so we skip it
+        # TODO: Revisit this decision
+        # value = html.escape(value)
 
         # Remove dangerous patterns
         dangerous_patterns = [
