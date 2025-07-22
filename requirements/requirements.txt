@@ -19,6 +19,10 @@ asyncpg==0.30.0
     # via -r requirements/requirements.in
 autoflake==2.3.1
     # via -r requirements/requirements.in
+autoregistry==1.1.2
+    # via -r requirements/requirements.in
+beautifulsoup4==4.13.4
+    # via -r requirements/requirements.in
 black==25.1.0
     # via -r requirements/requirements.in
 boto3==1.38.25
@@ -55,6 +59,8 @@ coverage==7.8.0
 cryptography==45.0.3
     # via moto
 cuid==0.4
+    # via -r requirements/requirements.in
+docx2txt==0.9
     # via -r requirements/requirements.in
 elastic-transport==8.17.1
     # via elasticsearch
@@ -105,6 +111,8 @@ jmespath==1.0.1
     #   botocore
 linecache2==1.0.0
     # via traceback2
+lxml==6.0.0
+    # via odfdo
 mako==1.3.10
     # via alembic
 markupsafe==3.0.2
@@ -126,6 +134,8 @@ mypy-extensions==1.1.0
     # via
     #   black
     #   mypy
+odfdo==3.14.10
+    # via -r requirements/requirements.in
 orjson==3.10.18
     # via -r requirements/requirements.in
 packaging==25.0
@@ -166,6 +176,8 @@ pyflakes==3.3.2
     #   autoflake
     #   flake8
 pyjwt==2.10.1
+    # via -r requirements/requirements.in
+pypdf==5.8.0
     # via -r requirements/requirements.in
 pytest==8.3.5
     # via
@@ -218,6 +230,8 @@ sniffio==1.3.1
     # via anyio
 sortedcontainers==2.4.0
     # via fakeredis
+soupsieve==2.7
+    # via beautifulsoup4
 sqlalchemy==2.0.30
     # via
     #   -r requirements/requirements.in
@@ -235,6 +249,7 @@ typing-extensions==4.13.2
     #   aiosqlite
     #   alembic
     #   anyio
+    #   beautifulsoup4
     #   boto3-stubs
     #   elasticsearch
     #   fastapi

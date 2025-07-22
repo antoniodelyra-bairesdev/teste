@@ -44,3 +44,8 @@ moto[secretsmanager,s3]
 fakeredis
 Pillow
 orjson
+autoregistry
+pypdf # For PDF processing
+docx2txt
+odfdo
+beautifulsoup4
