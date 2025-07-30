@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock, call
 
 from ehp.core.models.db.authentication import Authentication
 from ehp.tests.utils.test_client import EHPTestClient
@@ -288,3 +288,123 @@ class TestRegistrationEndpoints:
             response_data = response.json()
             assert "result" in response_data
             assert response_data["result"]["CODE"] == 500
+
+    class TestRegistrationConfirmationEmail:
+        """Test confirmation email functionality in registration."""
+        
+        async def test_register_sends_confirmation_email(
+            self, test_client: EHPTestClient, valid_registration_data: dict
+        ):
+            """Test that registration sends a confirmation email with correct token."""
+            with patch('ehp.core.services.registration.log_info'):
+                with patch('ehp.core.services.registration.UserMailer') as mock_mailer_class:
+                    # Create a mock mailer instance
+                    mock_mailer = AsyncMock()
+                    mock_mailer.send_mail = AsyncMock(return_value=True)
+                    mock_mailer_class.return_value = mock_mailer
+                    
+                    # Make the registration request
+                    response = test_client.post("/register", json=valid_registration_data)
+                    
+                    # Verify successful registration
+                    assert response.status_code == 200
+                    response_data = response.json()
+                    assert response_data["result"]["code"] == 200
+                    
+                    # Verify UserMailer was instantiated
+                    mock_mailer_class.assert_called_once()
+                    
+                    # Verify send_mail was called
+                    mock_mailer.send_mail.assert_called_once()
+                    
+                    # Extract the call arguments
+                    call_args = mock_mailer.send_mail.call_args
+                    subject = call_args[0][0]
+                    body = call_args[0][1]
+                    recipients = call_args[0][2]
+                    
+                    # Verify email details
+                    assert subject == "Welcome! Please Confirm Your Email"
+                    assert valid_registration_data["user_email"] in recipients
+                    assert "https://example.com/confirm-email?token=" in body
+                    assert "Welcome to Wikiclip!" in body
+                    assert "expire in 30 days" in body
+                    
+                    # Extract token from body and verify it's a valid hex token
+                    import re
+                    token_match = re.search(r'token=([a-f0-9]{64})', body)
+                    assert token_match, "Should find a 64-character hex token in email body"
+                    
+                    # Verify force and include_self parameters
+                    assert call_args[1]["force"] is True
+                    assert call_args[1]["include_self"] is False
+        
+        async def test_register_email_failure_does_not_fail_registration(
+            self, test_client: EHPTestClient, valid_registration_data: dict
+        ):
+            """Test that registration succeeds even if confirmation email fails to send."""
+            with patch('ehp.core.services.registration.log_info'):
+                with patch('ehp.core.services.registration.log_error') as mock_log_error:
+                    with patch('ehp.core.services.registration.UserMailer') as mock_mailer_class:
+                        # Create a mock mailer that fails to send
+                        mock_mailer = AsyncMock()
+                        mock_mailer.send_mail = AsyncMock(return_value=False)
+                        mock_mailer_class.return_value = mock_mailer
+                        
+                        # Make the registration request
+                        response = test_client.post("/register", json=valid_registration_data)
+                        
+                        # Verify registration still succeeds
+                        assert response.status_code == 200
+                        response_data = response.json()
+                        assert response_data["result"]["code"] == 200
+                        assert "successfully" in response_data["result"]["message"].lower()
+                        
+                        # Verify error was logged
+                        mock_log_error.assert_called()
+                        error_msg = str(mock_log_error.call_args[0][0])
+                        assert "Failed to send confirmation email" in error_msg
+        
+        async def test_register_email_exception_does_not_fail_registration(
+            self, test_client: EHPTestClient, valid_registration_data: dict
+        ):
+            """Test that registration succeeds even if email sending raises an exception."""
+            with patch('ehp.core.services.registration.log_info'):
+                with patch('ehp.core.services.registration.log_error') as mock_log_error:
+                    with patch('ehp.core.services.registration.UserMailer') as mock_mailer_class:
+                        # Create a mock mailer that raises an exception
+                        mock_mailer = AsyncMock()
+                        mock_mailer.send_mail = AsyncMock(side_effect=Exception("SMTP error"))
+                        mock_mailer_class.return_value = mock_mailer
+                        
+                        # Make the registration request
+                        response = test_client.post("/register", json=valid_registration_data)
+                        
+                        # Verify registration still succeeds
+                        assert response.status_code == 200
+                        response_data = response.json()
+                        assert response_data["result"]["code"] == 200
+                        
+                        # Verify error was logged
+                        mock_log_error.assert_called()
+                        error_msg = str(mock_log_error.call_args[0][0])
+                        assert "Error sending confirmation email" in error_msg
+        
+        async def test_register_stores_confirmation_token_in_database(
+            self, test_client: EHPTestClient, valid_registration_data: dict
+        ):
+            """Test that confirmation token is stored in the database."""
+            with patch('ehp.core.services.registration.log_info'):
+                with patch('ehp.core.services.registration.UserMailer'):
+                    # Make the registration request
+                    response = test_client.post("/register", json=valid_registration_data)
+                    
+                    # Verify successful registration
+                    assert response.status_code == 200
+                    response_data = response.json()
+                    assert response_data["result"]["code"] == 200
+                    
+                    # Verify token is not exposed in response
+                    auth_data = response_data["result"]["auth"]
+                    assert "confirmation_token" not in auth_data
+                    assert "confirmation_token_expires" not in auth_data

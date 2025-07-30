@@ -316,9 +316,11 @@ def test_register_and_login_flow(app: FastAPI):
          patch("sqlalchemy.ext.asyncio.AsyncSession.get", return_value=mock_profile), \
          patch("sqlalchemy.ext.asyncio.AsyncSession.add"), \
          patch("sqlalchemy.ext.asyncio.AsyncSession.flush"), \
+         patch("sqlalchemy.ext.asyncio.AsyncSession.commit"), \
          patch("ehp.core.models.db.Authentication", MagicMock), \
          patch("ehp.core.models.db.User", return_value=mock_user), \
-         patch("ehp.core.models.db.Profile", MagicMock):
+         patch("ehp.core.models.db.Profile", MagicMock), \
+         patch("ehp.core.services.email.UserMailer"):
 
         # Register user
         registration_data = {

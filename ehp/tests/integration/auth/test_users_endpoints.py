@@ -7,6 +7,7 @@ from ehp.db import DBManager
 from ehp.base.session import SessionManager
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.models.db.user import User
+from ehp.tests.integration.conftest import AuthenticatedClientProxy
 from ehp.tests.utils.test_client import EHPTestClient
 from ehp.core.repositories.authentication import AuthenticationRepository
 from ehp.core.repositories.base import BaseRepository
@@ -333,3 +334,146 @@ class TestUpdateUserSettingsEndpoint:
         assert user is not None
         assert user.readability_preferences is None
         assert user.email_notifications is True
+
+
+@pytest.mark.integration
+class TestOnboardingStatusEndpoint:
+    async def test_get_onboarding_status_returns_status_false_for_brand_new_user(
+        self, authenticated_client: AuthenticatedClientProxy
+    ):
+        response = authenticated_client.get(
+            "/users/me/onboarding-status", include_auth=True
+        )
+        assert response.status_code == 200, (
+            "Expected 200 status code for getting onboarding status"
+        )
+        assert response.json()["onboarding_complete"] is False, (
+            "Expected onboarding status to be False for a brand new user"
+        )
+
+    async def test_get_onboarding_status_returns_true_for_manually_updated_user(
+        self, authenticated_client: AuthenticatedClientProxy
+    ):
+        authenticated_client.user.onboarding_complete = True
+        response = authenticated_client.get(
+            "/users/me/onboarding-status", include_auth=True
+        )
+        assert response.status_code == 200, (
+            "Expected 200 status code for getting onboarding status"
+        )
+        assert response.json()["onboarding_complete"] is True, (
+            "Expected onboarding status to be True for a manually updated user"
+        )
+
+    async def test_put_onboarding_status_updates_status(
+        self, authenticated_client: AuthenticatedClientProxy
+    ):
+        response = authenticated_client.put(
+            "/users/me/onboarding-status",
+            json={"onboarding_complete": True},
+            include_auth=True,
+        )
+        assert response.status_code == 204, (
+            "Expected 204 status code for successful onboarding status update"
+        )
+
+        # Verify the onboarding status was updated
+        response = authenticated_client.get(
+            "/users/me/onboarding-status", include_auth=True
+        )
+        assert response.status_code == 200, (
+            "Expected 200 status code for getting onboarding status after update"
+        )
+        assert response.json()["onboarding_complete"] is True, (
+            "Expected onboarding status to be True after update"
+        )
+
+    async def test_put_onboarding_status_returns_forbidden_for_unauthenticated_user(
+        self, test_client: EHPTestClient
+    ):
+        response = test_client.put(
+            "/users/me/onboarding-status",
+            json={"onboarding_complete": True},
+            include_auth=False,
+        )
+        assert response.status_code == 403, (
+            "Expected 403 status code for unauthenticated user trying to update onboarding status"
+        )
+
+    async def test_put_onboarding_disables_status(
+        self, authenticated_client: AuthenticatedClientProxy
+    ):
+        response = authenticated_client.put(
+            "/users/me/onboarding-status",
+            json={"onboarding_complete": False},
+            include_auth=True,
+        )
+        assert response.status_code == 204, (
+            "Expected 204 status code for successful onboarding status update"
+        )
+
+        # Verify the onboarding status was updated
+        response = authenticated_client.get(
+            "/users/me/onboarding-status", include_auth=True
+        )
+        assert response.status_code == 200, (
+            "Expected 200 status code for getting onboarding status after update"
+        )
+        assert response.json()["onboarding_complete"] is False, (
+            "Expected onboarding status to be False after update"
+        )
+
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            ("get", "/users/me/onboarding-status"),
+            ("put", "/users/me/onboarding-status"),
+            ("post", "/users/me/onboarding-status/reset"),
+        ],
+        ids=[
+            "get_onboarding_status",
+            "put_onboarding_status",
+            "post_reset_onboarding_status",
+        ],
+    )
+    async def test_onboarding_endpoints_require_authentication(
+        self, authenticated_client: AuthenticatedClientProxy, method: str, path: str
+    ):
+        # Test that the endpoint requires authentication
+        response = getattr(authenticated_client, method)(path, include_auth=False)
+        assert response.status_code == 403, (
+            f"Expected 403 status code for unauthenticated {method.upper()} request to {path}"
+        )
+
+    async def test_post_resets_onboarding_status(
+        self, authenticated_client: AuthenticatedClientProxy
+    ):
+        # First, set onboarding status to True
+        response = authenticated_client.put(
+            "/users/me/onboarding-status",
+            json={"onboarding_complete": True},
+            include_auth=True,
+        )
+        assert response.status_code == 204, (
+            "Expected 204 status code for successful onboarding status update"
+        )
+
+        # Now reset the onboarding status
+        response = authenticated_client.post(
+            "/users/me/onboarding-status/reset",
+            include_auth=True,
+        )
+        assert response.status_code == 204, (
+            "Expected 204 status code for successful onboarding status reset"
+        )
+
+        # Verify the onboarding status was reset
+        response = authenticated_client.get(
+            "/users/me/onboarding-status", include_auth=True
+        )
+        assert response.status_code == 200, (
+            "Expected 200 status code for getting onboarding status after reset"
+        )
+        assert response.json()["onboarding_complete"] is False, (
+            "Expected onboarding status to be False after reset"
+        )

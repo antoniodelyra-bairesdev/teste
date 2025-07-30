@@ -27,7 +27,7 @@ from ehp.core.services.documents import (
     as_bytesio,
 )
 from ehp.db.db_manager import DBManager
-from ehp.tests.integration.api.conftest import USER_ID, AuthenticatedClientProxy
+from ehp.tests.integration.conftest import USER_ID, AuthenticatedClientProxy
 from ehp.tests.utils.test_client import EHPTestClient
 
 
@@ -1032,17 +1032,9 @@ class TestWikiClipEndpoints:
         ].model_validate_json(response.content)
         assert len(response_data.data) == 0
         assert response_data.total_count == 0
-        assert response_data.page == search["page"]
-        assert response_data.page_size == search["size"]
-        assert response_data.filters is not None
-        assert response_data.filters.search_term == "Nonexistent Article"
-        assert (
-            response_data.filters.sort_by
-            is WikiClipSearchSortStrategy.CREATION_DATE_DESC
-        )
-        assert response_data.filters.created_before == datetime(2024, 6, 15, 12, 0, 0)
-        assert response_data.filters.created_after == datetime(2024, 6, 17, 12, 0, 0)
-        assert response_data.filters.filter_by_user is True
+        assert response_data.page == 0
+        assert response_data.page_size == 0
+        assert response_data.filters is None
 
     async def test_search_wikiclips_second_page(
         self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager
@@ -1057,7 +1049,7 @@ class TestWikiClipEndpoints:
                 title=f"Test Article {i}",
                 content=f"Content for test article {i}.",
                 url=f"https://example.com/test-article-{i}",
-                created_at=datetime(2024, 6, 16, 12, 0, 0),
+                created_at=datetime(2024, 6, 16, 12, 0, 0) - timedelta(minutes=i),  # Different timestamps for deterministic ordering
                 related_links=[],
                 user_id=authenticated_client.user.id,
             )
@@ -1099,7 +1091,7 @@ class TestWikiClipEndpoints:
         assert response_data.filters.filter_by_user is True
         # Verify that the clips returned are from the second page
         for clip in response_data.data:
-            assert clip.id > 10
+            assert clip.id >= 11
             assert clip.id <= 20
 
     async def test_search_wikiclips_created_at_asc(
@@ -1220,6 +1212,7 @@ class TestWikiClipEndpoints:
                 id=1,
                 title="My First Save",
                 content="This is my first saved article with some content that will be summarized.",
+                summary="This is my first saved article with some content that will be summarized.",  # No truncation needed
                 url="https://example.com/first",
                 created_at=datetime(2024, 1, 2, 12, 0, 0),
                 user_id=user.id,
@@ -1229,6 +1222,7 @@ class TestWikiClipEndpoints:
                 id=2,
                 title="My Second Save",
                 content="Another article I saved for later reading.",
+                summary="Another article I saved for later reading.",  # No truncation needed
                 url="https://example.com/second",
                 created_at=datetime(2024, 1, 1, 12, 0, 0),
                 user_id=user.id,
@@ -1288,6 +1282,7 @@ class TestWikiClipEndpoints:
             id=3,
             title="Page 2 Article",
             content="Content on second page",
+            summary="Content on second page",  # No truncation needed
             url="https://example.com/page2",
             created_at=datetime(2024, 1, 3, 12, 0, 0),
             user_id=user.id,
@@ -1340,8 +1335,8 @@ class TestWikiClipEndpoints:
 
         assert response_data["total_count"] == 0
         assert response_data["data"] == []
-        assert response_data["page"] == 1
-        assert response_data["page_size"] == 20
+        assert response_data["page"] == 0
+        assert response_data["page_size"] == 0
 
     @patch("ehp.core.services.wikiclip.WikiClipRepository")
     def test_get_my_pages_content_summary_truncation(
@@ -1353,10 +1348,12 @@ class TestWikiClipEndpoints:
 
         # Create page with long content
         long_content = "A" * 250  # 250 characters
+        # Summary should be first 100 chars + "..." (from generate_summary function)
         sample_page = WikiClip(
             id=1,
             title="Long Article",
             content=long_content,
+            summary="A" * 100 + "...",  # Mimics generate_summary behavior
             url="https://example.com/long",
             created_at=datetime(2024, 1, 1, 12, 0, 0),
             user_id=user.id,
@@ -1396,6 +1393,7 @@ class TestWikiClipEndpoints:
             id=1,
             title="Multi-section Article",
             content=content_with_sections,
+            summary="Section 1 content.\n\nSection 2 content.\n\nSection 3 content.",  # Full content as summary
             url="https://example.com/sections",
             created_at=datetime(2024, 1, 1, 12, 0, 0),
             user_id=user.id,
@@ -1435,6 +1433,7 @@ class TestWikiClipEndpoints:
             id=1,
             title="Tagged Article",
             content="Article about technology and programming",
+            summary="Article about technology and programming",  # No truncation needed
             url="https://example.com/tagged",
             created_at=datetime(2024, 1, 1, 12, 0, 0),
             user_id=user.id,
@@ -2132,7 +2131,312 @@ class TestWikiClipPaginationFields:
         assert data["total_pages"] == 0  # No pages when no results
         assert data["has_next"] is False
         assert data["has_previous"] is False
-        assert data["page"] == 1
-        assert data["page_size"] == 10
+        assert data["page"] == 0  # API returns 0 for empty results
+        assert data["page_size"] == 0  # API returns 0 for empty results
         assert data["total_count"] == 0
         assert len(data["data"]) == 0
+
+    async def test_empty_pagination_all_endpoints(self, authenticated_client: AuthenticatedClientProxy):
+        """Test all wikiclip endpoints return consistent empty paged response when user has no wikiclips."""
+        endpoints_with_params = [
+            ("/wikiclip/my", {"page": 1, "size": 10}),
+            ("/wikiclip/trending", {"page": 1, "size": 10}),
+            ("/wikiclip/", {"page": 1, "size": 10, "search_term": "test"}),
+            ("/wikiclip/suggested", {"page": 1, "size": 10}),
+        ]
+        
+        expected_empty_response = {
+            "data": [],
+            "total_count": 0,
+            "page": 0,
+            "page_size": 0,
+            "total_pages": 0,
+            "has_next": False,
+            "has_previous": False,
+        }
+        
+        for endpoint, params in endpoints_with_params:
+            response = authenticated_client.get(endpoint, params=params, include_auth=True)
+            
+            assert response.status_code == 200, f"Endpoint {endpoint} failed with status {response.status_code}"
+            data = response.json()
+            
+            # Check all required pagination fields are present and correct for empty response
+            for key, expected_value in expected_empty_response.items():
+                assert key in data, f"Missing field '{key}' in response from {endpoint}"
+                assert data[key] == expected_value, f"Field '{key}' in {endpoint} expected {expected_value}, got {data[key]}"
+
+    async def test_get_my_pages_empty_database_integration(self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager):
+        """Integration test for get_my_pages with empty database to cover create_empty_paged_response."""
+        # This test ensures the actual service code path is covered without mocking
+        # The authenticated_client user should have no wikiclips in the clean test database
+        
+        response = authenticated_client.get("/wikiclip/my", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify create_empty_paged_response output
+        assert data["data"] == []
+        assert data["total_count"] == 0
+        assert data["page"] == 0
+        assert data["page_size"] == 0
+        assert data["total_pages"] == 0
+        assert data["has_next"] is False
+        assert data["has_previous"] is False
+        assert data["filters"] is None
+
+    async def test_get_trending_empty_database_integration(self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager):
+        """Integration test for get_trending_wikiclips with empty database to cover create_empty_paged_response."""
+        # This test ensures the actual service code path is covered without mocking
+        
+        response = authenticated_client.get("/wikiclip/trending?page=1&size=10", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify create_empty_paged_response output
+        assert data["data"] == []
+        assert data["total_count"] == 0
+        assert data["page"] == 0
+        assert data["page_size"] == 0
+        assert data["total_pages"] == 0
+        assert data["has_next"] is False
+        assert data["has_previous"] is False
+        assert data["filters"] is None
+
+    async def test_search_wikiclips_empty_database_integration(self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager):
+        """Integration test for search_wikiclips with no matching results to cover create_empty_paged_response."""
+        # This test ensures the actual service code path is covered without mocking
+        
+        response = authenticated_client.get("/wikiclip/?search_term=nonexistentterm&page=1&size=10", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify create_empty_paged_response output
+        assert data["data"] == []
+        assert data["total_count"] == 0
+        assert data["page"] == 0
+        assert data["page_size"] == 0
+        assert data["total_pages"] == 0
+        assert data["has_next"] is False
+        assert data["has_previous"] is False
+        assert data["filters"] is None
+
+    async def test_get_suggested_empty_database_integration(self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager):
+        """Integration test for get_suggested_wikiclips with empty database to cover create_empty_paged_response."""
+        # This test ensures the actual service code path is covered without mocking
+        
+        response = authenticated_client.get("/wikiclip/suggested?page=1&size=10", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify create_empty_paged_response output
+        assert data["data"] == []
+        assert data["total_count"] == 0
+        assert data["page"] == 0
+        assert data["page_size"] == 0
+        assert data["total_pages"] == 0
+        assert data["has_next"] is False
+        assert data["has_previous"] is False
+        # For suggested endpoint, filters should be None for empty results (same as other endpoints)
+        assert data["filters"] is None
+
+    async def test_trending_wikiclips_with_data_integration(self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager):
+        """Integration test for get_trending_wikiclips with data to cover success path lines 395-400."""
+        wikiclip_repo = WikiClipRepository(test_db_manager.get_session())
+        
+        # Create test data
+        wikiclip = WikiClip(
+            id=1,
+            title="Trending Article",
+            content="This is trending content.",
+            summary="This is trending content.",
+            url="https://example.com/trending",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            user_id=authenticated_client.user.id,
+            related_links=[],
+        )
+        await wikiclip_repo.create(wikiclip)
+        
+        response = authenticated_client.get("/wikiclip/trending?page=1&size=10", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify success path execution - should have data
+        assert len(data["data"]) > 0
+        assert data["total_count"] > 0
+        assert data["page"] == 1
+        assert data["page_size"] == 10
+
+    async def test_suggested_wikiclips_with_data_integration(self, authenticated_client: AuthenticatedClientProxy, test_db_manager: DBManager):
+        """Integration test for get_suggested_wikiclips with data to cover success path lines 486-489."""
+        wikiclip_repo = WikiClipRepository(test_db_manager.get_session())
+        
+        # Create test data
+        wikiclip = WikiClip(
+            id=1,
+            title="Suggested Article",
+            content="This is suggested content.",
+            summary="This is suggested content.",
+            url="https://example.com/suggested",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            user_id=authenticated_client.user.id,
+            related_links=[],
+        )
+        await wikiclip_repo.create(wikiclip)
+        
+        response = authenticated_client.get("/wikiclip/suggested?page=1&size=10", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify success path execution - should have data
+        assert len(data["data"]) > 0
+        assert data["total_count"] > 0
+        assert data["page"] == 1
+        assert data["page_size"] == 10
+
+    def test_generate_summary_empty_content(self):
+        """Test generate_summary function with empty content to cover line 55."""
+        from ehp.core.services.wikiclip import generate_summary
+        
+        # Test empty string
+        assert generate_summary("") == ""
+        
+        # Test None (should not happen in practice but covers the edge case)
+        assert generate_summary(None) == ""
+
+    def test_generate_summary_short_content(self):
+        """Test generate_summary function with content shorter than 100 characters."""
+        from ehp.core.services.wikiclip import generate_summary
+        
+        short_content = "Short content"
+        assert generate_summary(short_content) == "Short content"
+
+    def test_generate_summary_long_content(self):
+        """Test generate_summary function with content longer than 100 characters."""
+        from ehp.core.services.wikiclip import generate_summary
+        
+        long_content = "A" * 150  # 150 characters
+        result = generate_summary(long_content)
+        assert len(result) == 103  # 100 + "..."
+        assert result.endswith("...")
+        assert result.startswith("A" * 100)
+
+    async def test_save_wikiclip_http_exception_path(self, authenticated_client: AuthenticatedClientProxy):
+        """Test save_wikiclip HTTP exception handling to cover line 106."""
+        # This test creates a scenario that should trigger an HTTPException during save
+        # Using valid data that passes validation but fails at service level
+        
+        valid_data = {
+            "title": "Test Article",
+            "content": "Test content",
+            "url": "https://example.com/test",  # Valid URL format
+            "created_at": datetime.now().isoformat(),
+            "related_links": []
+        }
+        
+        with patch("ehp.core.services.wikiclip.WikiClipRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.create.side_effect = HTTPException(status_code=400, detail="Bad Request")
+            
+            response = authenticated_client.post("/wikiclip/", json=valid_data, include_auth=True)
+            
+            # Should re-raise the HTTPException (line 106)
+            assert response.status_code == 400
+
+    async def test_save_wikiclip_generic_exception_path(self, authenticated_client: AuthenticatedClientProxy):
+        """Test save_wikiclip generic exception handling to cover lines 109-110."""
+        
+        valid_data = {
+            "title": "Test Article",
+            "content": "Test content", 
+            "url": "https://example.com/test",
+            "created_at": datetime.now().isoformat(),
+            "related_links": []
+        }
+        
+        with patch("ehp.core.services.wikiclip.WikiClipRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.create.side_effect = Exception("Database connection failed")
+            
+            response = authenticated_client.post("/wikiclip/", json=valid_data, include_auth=True)
+            
+            # Should catch generic exception and return 500 (lines 109-110)
+            assert response.status_code == 500
+            assert response.json()["detail"] == "Internal server error"
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    async def test_trending_wikiclips_empty_response_unit(self, mock_repo_class, authenticated_client: AuthenticatedClientProxy):
+        """Unit test to ensure trending endpoint empty response path is covered (lines 392-393)."""
+        # Mock repository to return 0 count
+        mock_repo = AsyncMock()
+        mock_repo_class.return_value = mock_repo
+        mock_repo.count_trending.return_value = 0  # This will trigger lines 392-393
+        
+        response = authenticated_client.get("/wikiclip/trending?page=1&size=10", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify empty response structure (lines 392-393 executed)
+        assert data["data"] == []
+        assert data["total_count"] == 0
+        assert data["page"] == 0
+        assert data["page_size"] == 0
+        
+        # Verify repository was called but search was not (because count was 0)
+        mock_repo.count_trending.assert_called_once()
+        mock_repo.get_trending.assert_not_called()
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")
+    async def test_search_wikiclips_empty_response_unit(self, mock_repo_class, authenticated_client: AuthenticatedClientProxy):
+        """Unit test to ensure search endpoint empty response path is covered (line 441)."""
+        # Mock repository to return 0 count
+        mock_repo = AsyncMock()
+        mock_repo_class.return_value = mock_repo
+        mock_repo.count.return_value = 0  # This will trigger line 441
+        
+        response = authenticated_client.get("/wikiclip/?page=1&size=10", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify empty response structure (line 441 executed)
+        assert data["data"] == []
+        assert data["total_count"] == 0
+        assert data["page"] == 0
+        assert data["page_size"] == 0
+        
+        # Verify repository was called but search was not (because count was 0)
+        mock_repo.count.assert_called_once()
+        mock_repo.search.assert_not_called()
+
+    @patch("ehp.core.services.wikiclip.WikiClipRepository")  
+    async def test_suggested_wikiclips_empty_response_unit(self, mock_repo_class, authenticated_client: AuthenticatedClientProxy):
+        """Unit test to ensure suggested endpoint empty response path is covered (lines 483-484)."""
+        # Mock repository to return 0 count
+        mock_repo = AsyncMock()
+        mock_repo_class.return_value = mock_repo
+        mock_repo.count_suggested.return_value = 0  # This will trigger lines 483-484
+        
+        response = authenticated_client.get("/wikiclip/suggested?page=1&size=10", include_auth=True)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify empty response structure (lines 483-484 executed)
+        assert data["data"] == []
+        assert data["total_count"] == 0
+        assert data["page"] == 0  
+        assert data["page_size"] == 0
+        
+        # Verify repository was called but get_suggested was not (because count was 0)
+        mock_repo.count_suggested.assert_called_once()
+        mock_repo.get_suggested.assert_not_called()

@@ -1,11 +1,14 @@
-from unittest.mock import AsyncMock, Mock, patch
-
 import pytest
+from unittest.mock import AsyncMock, Mock, patch
 
 from ehp.core.models.db.authentication import Authentication
 from ehp.core.models.db.user import User
 from ehp.core.services.email import UserMailer
-from ehp.utils.email import _apply_reading_settings_to_html, send_mail, send_notification
+from ehp.utils.email import (
+    _apply_reading_settings_to_html,
+    send_mail,
+    send_notification,
+)
 
 
 @pytest.mark.unit
@@ -191,7 +194,7 @@ class TestEmailWithReadingSettings:
             "font_size": "Large",
             "color_mode": "Dark",
             "font_weight": "Bold",
-            "line_spacing": "Wide",
+            "line_spacing": "Spacious",
             "fonts": {"headline": "Arial", "body": "Georgia", "caption": "Verdana"},
         }
 
@@ -228,18 +231,19 @@ class TestEmailWithReadingSettings:
         assert "line-height: 1.2" in result
         assert "font-family: Arial, sans-serif" in result
 
-    def test_apply_reading_settings_to_html_sepia_mode(self):
-        """Test HTML styling with sepia mode settings."""
+    def test_apply_reading_settings_to_html_red_green_color_blindness(self):
+        """Test HTML styling with red-green color blindness mode settings."""
         settings = {
-            "color_mode": "Sepia",
+            "color_mode": "Red-Green Color Blindness",
             "font_size": "Medium",
         }
         html_content = "<p>Test email content</p>"
 
         result = _apply_reading_settings_to_html(html_content, settings)
 
-        assert "background-color: #f4f3e6" in result
-        assert "color: #3c3c3c" in result
+        assert "background-color: #ffffff" in result
+        assert "color: #000000" in result
+        assert "--accent-color: #0066cc" in result
         assert "font-size: 16px" in result
 
     def test_apply_reading_settings_with_existing_body_tag(self):
@@ -285,7 +289,10 @@ class TestEmailWithReadingSettings:
             ("Times", "Times, 'Times New Roman', serif"),
             ("Verdana", "Verdana, sans-serif"),
             ("Courier", "'Courier New', monospace"),
-            ("System", None),  # Should not add font-family
+            (
+                "System",
+                "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            ),
             ("Unknown", None),  # Should not add font-family
         ]
 
@@ -306,7 +313,6 @@ class TestEmailWithReadingSettings:
             ("Small", "14px"),
             ("Medium", "16px"),
             ("Large", "18px"),
-            ("Extra Large", "20px"),
             ("Unknown", None),  # Should not add font-size
         ]
 
@@ -326,8 +332,7 @@ class TestEmailWithReadingSettings:
         test_cases = [
             ("Compact", "1.2"),
             ("Standard", "1.5"),
-            ("Wide", "1.8"),
-            ("Extra Wide", "2.0"),
+            ("Spacious", "1.8"),
             ("Unknown", None),  # Should not add line-height
         ]
 
@@ -347,7 +352,6 @@ class TestEmailWithReadingSettings:
         test_cases = [
             ("Light", "300"),
             ("Normal", "400"),
-            ("Medium", "500"),
             ("Bold", "700"),
             ("Unknown", None),  # Should not add font-weight
         ]
@@ -374,6 +378,66 @@ class TestEmailWithReadingSettings:
         assert result.endswith("</div>")
         assert "font-size: 18px" in result
         assert "background-color: #1a1a1a" in result
+
+    def test_blue_yellow_color_blindness_mode(self):
+        """Test HTML styling with blue-yellow color blindness mode settings."""
+        settings = {
+            "color_mode": "Blue-Yellow Color Blindness",
+            "font_size": "Medium",
+        }
+        html_content = "<p>Test email content</p>"
+
+        result = _apply_reading_settings_to_html(html_content, settings)
+
+        assert "background-color: #ffffff" in result
+        assert "color: #000000" in result
+        assert "--accent-color: #cc0000" in result
+        assert "font-size: 16px" in result
+
+    def test_headline_font_application(self):
+        """Test that headline fonts are applied to heading tags."""
+        settings = {
+            "fonts": {"headline": "Arial", "body": "Georgia", "caption": "Verdana"}
+        }
+        html_content = "<h1>Title</h1><p>Body text</p><h2>Subtitle</h2>"
+
+        result = _apply_reading_settings_to_html(html_content, settings)
+
+        # Check that headline font is applied to h1 and h2 tags
+        assert 'style="font-family: Arial, sans-serif;"' in result
+        # Check that body font is applied as base style
+        assert "font-family: Georgia, serif" in result
+
+    def test_caption_font_application(self):
+        """Test that caption fonts are applied to caption tags."""
+        settings = {
+            "fonts": {"headline": "Arial", "body": "Georgia", "caption": "Verdana"}
+        }
+        html_content = (
+            "<p>Body text</p><small>Caption text</small>"
+            "<figcaption>Figure caption</figcaption>"
+        )
+
+        result = _apply_reading_settings_to_html(html_content, settings)
+
+        # Check that caption font is applied to small and figcaption tags
+        assert 'style="font-family: Verdana, sans-serif;"' in result
+        # Check that body font is applied as base style
+        assert "font-family: Georgia, serif" in result
+
+    def test_system_font_not_applied_to_elements(self):
+        """Test that System font is not applied to specific elements."""
+        settings = {
+            "fonts": {"headline": "System", "body": "Georgia", "caption": "System"}
+        }
+        html_content = "<h1>Title</h1><p>Body text</p><small>Caption</small>"
+
+        result = _apply_reading_settings_to_html(html_content, settings)
+
+        # System fonts should not be applied to headline and caption elements
+        assert 'style="font-family:' not in result
+        # Only body font should be applied
+        assert "font-family: Georgia, serif" in result
 
     @patch("ehp.utils.email.smtplib.SMTP")
     def test_send_mail_with_reading_settings_html(

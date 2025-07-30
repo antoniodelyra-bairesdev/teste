@@ -19,7 +19,7 @@ class TestWikiClipEndpointsWithReadingSettings:
 
     def setup_method(self):
         self.authentication = Authentication(
-            id=999,
+            id=100,
             user_name="readingsettingsuser",
             user_email="readingsettings@example.com",
             user_pwd=hash_password("Te$tPassword123"),
@@ -28,7 +28,7 @@ class TestWikiClipEndpointsWithReadingSettings:
             retry_count=0,
         )
         self.user = User(
-            id=999,
+            id=100,
             full_name="Reading Settings User",
             created_at=datetime.now(),
             auth_id=self.authentication.id,
@@ -308,7 +308,7 @@ class TestWikiClipEndpointsWithReadingSettings:
             content="This is public content",
             url="https://example.com/public",
             created_at=datetime.now(),
-            user_id=999,
+            user_id=100,
         )
         await wikiclip_repo.create(test_wikiclip)
 

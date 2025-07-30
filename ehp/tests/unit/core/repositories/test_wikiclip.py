@@ -103,15 +103,17 @@ class TestWikiClipRepository:
             # The exception should be raised during session.execute, not during query creation
             mock_session.execute.side_effect = Exception("Database error")
 
-            # Act & Assert
-            # Since the exception is not caught in the exists method, it should be raised
-            with pytest.raises(Exception, match="Database error"):
-                await repository.exists(
-                    url="https://example.com/test",
-                    created_at=date(2024, 1, 1),
-                    title="Test Article",
-                    user_id=123,
-                )
+            # Act
+            result = await repository.exists(
+                url="https://example.com/test",
+                created_at=date(2024, 1, 1),
+                title="Test Article",
+                user_id=123,
+            )
+
+            # Assert
+            assert result is False
+            mock_session.execute.assert_called_once()
 
     @patch("ehp.core.repositories.wikiclip.select")
     async def test_exists_returns_false_on_exception_during_statement_creation(

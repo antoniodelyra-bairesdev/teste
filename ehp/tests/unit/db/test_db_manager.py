@@ -1,12 +1,14 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import Column, Integer, String
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ehp.base.exceptions import DBConnectionError
 from ehp.core.models.db.base import BaseModel
-from ehp.db.db_manager import DBManager, set_db_manager_in_request_config
+from ehp.db.db_manager import DBManager, set_db_manager_in_request_config, get_db_session, get_managed_session
 
 
 # Define a simple test model for db operations
@@ -293,3 +295,168 @@ def test_set_db_manager_in_request_config():
         assert (
             "Error setting db manager in request config" in mock_print.call_args[0][0]
         )
+
+
+@pytest.mark.unit
+class TestDBManagerConnectionErrors:
+    """Test connection error handling in DBManager"""
+
+    async def test_transaction_disconnection_error_outermost(self):
+        """Test that DisconnectionError in outermost transaction triggers rollback and raises DBConnectionError. Tests lines 73-74."""
+        db_manager = DBManager()
+
+        # Mock session
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session.__aenter__.return_value = mock_session
+        mock_session.__aexit__.return_value = None
+
+        # Mock begin to return a context manager
+        mock_session.begin.return_value = mock_session
+        mock_session.rollback = AsyncMock()
+
+        # Mock get_session to return our mock session
+        db_manager.get_session = MagicMock(return_value=mock_session)
+
+        # Execute a transaction that raises DisconnectionError
+        with pytest.raises(DBConnectionError, match="DB connection failed"):
+            async with db_manager.transaction() as session:
+                assert session == mock_session
+                # Simulate a disconnection error during transaction
+                raise DisconnectionError("Connection lost", None, None)
+
+        # Verify rollback was called since this is outermost transaction
+        mock_session.rollback.assert_called_once()
+
+    async def test_transaction_operational_error_outermost(self):
+        """Test that OperationalError in outermost transaction triggers rollback and raises DBConnectionError. Tests lines 73-74."""
+        db_manager = DBManager()
+
+        # Mock session
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session.__aenter__.return_value = mock_session
+        mock_session.__aexit__.return_value = None
+
+        # Mock begin to return a context manager
+        mock_session.begin.return_value = mock_session
+        mock_session.rollback = AsyncMock()
+
+        # Mock get_session to return our mock session
+        db_manager.get_session = MagicMock(return_value=mock_session)
+
+        # Execute a transaction that raises OperationalError
+        with pytest.raises(DBConnectionError, match="DB connection failed"):
+            async with db_manager.transaction() as session:
+                assert session == mock_session
+                # Simulate an operational error during transaction
+                raise OperationalError("Database timeout", None, None)
+
+        # Verify rollback was called since this is outermost transaction
+        mock_session.rollback.assert_called_once()
+
+
+@pytest.mark.unit
+class TestGetDBSession:
+    """Test connection error handling in get_db_session function"""
+
+    async def test_get_db_session_disconnection_error(self):
+        """Test that DisconnectionError in get_db_session triggers rollback and raises DBConnectionError. Tests lines 184-185-186."""
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session.rollback = AsyncMock()
+
+        with patch("ehp.db.db_manager.DBManager") as mock_db_manager_class:
+            mock_db_manager = mock_db_manager_class.return_value
+            mock_db_manager.get_session.return_value = mock_session
+
+            # Create async generator and simulate DisconnectionError
+            db_session_gen = get_db_session()
+            session = await db_session_gen.__anext__()
+            assert session == mock_session
+
+            # Simulate DisconnectionError when generator is closed
+            with pytest.raises(DBConnectionError, match="DB connection failed"):
+                try:
+                    await db_session_gen.athrow(DisconnectionError("Connection lost", None, None))
+                except StopAsyncIteration:
+                    pass
+
+            # Verify rollback was called
+            mock_session.rollback.assert_called_once()
+
+    async def test_get_db_session_operational_error(self):
+        """Test that OperationalError in get_db_session triggers rollback and raises DBConnectionError. Tests lines 184-185-186."""
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session.rollback = AsyncMock()
+
+        with patch("ehp.db.db_manager.DBManager") as mock_db_manager_class:
+            mock_db_manager = mock_db_manager_class.return_value
+            mock_db_manager.get_session.return_value = mock_session
+
+            # Create async generator and simulate OperationalError
+            db_session_gen = get_db_session()
+            session = await db_session_gen.__anext__()
+            assert session == mock_session
+
+            # Simulate OperationalError when generator is closed
+            with pytest.raises(DBConnectionError, match="DB connection failed"):
+                try:
+                    await db_session_gen.athrow(OperationalError("Database timeout", None, None))
+                except StopAsyncIteration:
+                    pass
+
+            # Verify rollback was called
+            mock_session.rollback.assert_called_once()
+
+
+@pytest.mark.unit
+class TestGetManagedSession:
+    """Test connection error handling in get_managed_session function"""
+
+    async def test_get_managed_session_disconnection_error(self):
+        """Test that DisconnectionError in get_managed_session triggers rollback and raises DBConnectionError. Tests lines 222-223-224."""
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session.rollback = AsyncMock()
+        mock_session.in_transaction.return_value = False
+        mock_session.begin.return_value = AsyncMock()
+
+        mock_db_manager = MagicMock()
+        mock_db_manager.get_session.return_value = mock_session
+
+        # Create async generator by calling the function directly with the mock db_manager
+        managed_session_gen = get_managed_session(mock_db_manager)
+        session = await managed_session_gen.__anext__()
+        assert session == mock_session
+
+        # Simulate DisconnectionError when generator is closed
+        with pytest.raises(DBConnectionError, match="DB connection failed"):
+            try:
+                await managed_session_gen.athrow(DisconnectionError("Connection lost", None, None))
+            except StopAsyncIteration:
+                pass
+
+        # Verify rollback was called
+        mock_session.rollback.assert_called_once()
+
+    async def test_get_managed_session_operational_error(self):
+        """Test that OperationalError in get_managed_session triggers rollback and raises DBConnectionError. Tests lines 222-223-224."""
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session.rollback = AsyncMock()
+        mock_session.in_transaction.return_value = False
+        mock_session.begin.return_value = AsyncMock()
+
+        mock_db_manager = MagicMock()
+        mock_db_manager.get_session.return_value = mock_session
+
+        # Create async generator by calling the function directly with the mock db_manager
+        managed_session_gen = get_managed_session(mock_db_manager)
+        session = await managed_session_gen.__anext__()
+        assert session == mock_session
+
+        # Simulate OperationalError when generator is closed
+        with pytest.raises(DBConnectionError, match="DB connection failed"):
+            try:
+                await managed_session_gen.athrow(OperationalError("Database timeout", None, None))
+            except StopAsyncIteration:
+                pass
+
+        # Verify rollback was called
+        mock_session.rollback.assert_called_once()

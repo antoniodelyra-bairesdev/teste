@@ -27,7 +27,11 @@ class TestReadingSettingsEndpoints:
         profile_repository = BaseRepository(test_db_manager.get_session(), Profile)
         for profilename, profilecode in constants.PROFILE_IDS.items():
             await profile_repository.create(
-                Profile(id=profilecode, name=profilename, code=profilename.lower())
+                Profile(
+                    id=profilecode,
+                    name=profilename,
+                    code=profilename.lower(),
+                )
             )
 
         authentication = Authentication(
@@ -78,7 +82,7 @@ class TestReadingSettingsEndpoints:
         settings = {
             "font_size": "Large",
             "font_weight": "Bold",
-            "line_spacing": "Wide",
+            "line_spacing": "Spacious",  # Corrigido de 'Wide' para 'Spacious'
             "color_mode": "Dark",
             "fonts": {"headline": "Arial", "body": "Georgia", "caption": "Verdana"},
         }
@@ -159,3 +163,160 @@ class TestReadingSettingsEndpoints:
             "/users/reading-settings", json=payload, include_auth=True
         )
         assert response.status_code == 422
+
+    class TestValidationErrors:
+        """Test validation error responses for invalid enum values and fonts."""
+
+        async def test_create_with_invalid_fonts(
+            self, authenticated_client: EHPTestClient
+        ):
+            """Test creation with invalid font values returns 422."""
+            invalid_settings = {
+                "font_size": "Medium",
+                "fonts": {
+                    "headline": "Comic Sans",
+                    "body": "Wingdings",
+                    "caption": "Papyrus",
+                },
+                "font_weight": "Normal",
+                "line_spacing": "Standard",
+                "color_mode": "Default",
+            }
+            response = authenticated_client.post(
+                "/users/reading-settings", json=invalid_settings, include_auth=True
+            )
+            assert response.status_code == 422
+            error_data = response.json()
+            errors = (
+                error_data["detail"]["errors"]
+                if isinstance(error_data["detail"], dict)
+                and "errors" in error_data["detail"]
+                else error_data["detail"]
+            )
+            assert any(
+                "Font must be one of" in str(error)
+                or "Invalid font setting" in str(error)
+                for error in errors
+            ), f"Unexpected error message: {errors}"
+
+        async def test_update_with_invalid_fonts(
+            self, authenticated_client: EHPTestClient
+        ):
+            """Test update with invalid font value returns 422."""
+            # First create valid settings
+            valid_settings = {
+                "font_size": "Medium",
+                "fonts": {"headline": "System", "body": "System", "caption": "System"},
+                "font_weight": "Normal",
+                "line_spacing": "Standard",
+                "color_mode": "Default",
+            }
+            create_response = authenticated_client.post(
+                "/users/reading-settings", json=valid_settings, include_auth=True
+            )
+            assert create_response.status_code == 201
+
+            # Try partial update with invalid font
+            invalid_update = {"fonts": {"headline": "Comic Sans"}}
+            response = authenticated_client.put(
+                "/users/reading-settings", json=invalid_update, include_auth=True
+            )
+            assert response.status_code == 422
+            error_data = response.json()
+            errors = (
+                error_data["detail"]["errors"]
+                if isinstance(error_data["detail"], dict)
+                and "errors" in error_data["detail"]
+                else error_data["detail"]
+            )
+            assert any(
+                "Font must be one of" in str(error)
+                or "Invalid font setting" in str(error)
+                for error in errors
+            ), f"Unexpected error message: {errors}"
+
+        async def test_update_with_valid_fonts(
+            self, authenticated_client: EHPTestClient
+        ):
+            """Test update with valid font value returns 200 and merges correctly."""
+            valid_settings = {
+                "font_size": "Medium",
+                "fonts": {"headline": "System", "body": "System", "caption": "System"},
+                "font_weight": "Normal",
+                "line_spacing": "Standard",
+                "color_mode": "Default",
+            }
+            create_response = authenticated_client.post(
+                "/users/reading-settings", json=valid_settings, include_auth=True
+            )
+            assert create_response.status_code == 201
+
+            valid_update = {"fonts": {"headline": "Arial"}}
+            response = authenticated_client.put(
+                "/users/reading-settings", json=valid_update, include_auth=True
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["fonts"]["headline"] == "Arial"
+            assert data["fonts"]["body"] == "System"
+
+        async def test_create_with_extra_field(
+            self, authenticated_client: EHPTestClient
+        ):
+            """Test creation with extra/unknown field returns 422 or ignores field."""
+            settings = {
+                "font_size": "Medium",
+                "fonts": {"headline": "System", "body": "System", "caption": "System"},
+                "font_weight": "Normal",
+                "line_spacing": "Standard",
+                "color_mode": "Default",
+                "unknown_field": "foo",
+            }
+            response = authenticated_client.post(
+                "/users/reading-settings", json=settings, include_auth=True
+            )
+            # Aceita 422 ou 201 se ignorar campo extra
+            assert response.status_code in (201, 422)
+
+        async def test_create_with_all_fields_none(
+            self, authenticated_client: EHPTestClient
+        ):
+            """Test creation with all fields None returns 422."""
+            settings = {
+                "font_size": None,
+                "fonts": None,
+                "font_weight": None,
+                "line_spacing": None,
+                "color_mode": None,
+            }
+            response = authenticated_client.post(
+                "/users/reading-settings", json=settings, include_auth=True
+            )
+            assert response.status_code == 422
+
+        async def test_create_without_fonts(self, authenticated_client: EHPTestClient):
+            """Test creation without fonts field returns 422 or 201 if not required."""
+            settings = {
+                "font_size": "Medium",
+                "font_weight": "Normal",
+                "line_spacing": "Standard",
+                "color_mode": "Default",
+            }
+            response = authenticated_client.post(
+                "/users/reading-settings", json=settings, include_auth=True
+            )
+            # Accept 201 if fonts is not required, 422 if required
+            assert response.status_code in (201, 422)
+            if response.status_code == 422:
+                error_data = response.json()
+                errors = (
+                    error_data["detail"]["errors"]
+                    if isinstance(error_data["detail"], dict)
+                    and "errors" in error_data["detail"]
+                    else error_data["detail"]
+                )
+                assert any(
+                    "Font settings are required" in error
+                    or "Invalid font setting" in error
+                    for error in errors
+                )
