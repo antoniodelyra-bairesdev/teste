@@ -1,4 +1,3 @@
-import json
 import logging
 import time
 import uuid
@@ -128,6 +127,33 @@ class ValidationMiddleware(BaseHTTPMiddleware):
             return response
 
         except Exception as e:
+            # Import here to avoid circular import
+            from ehp.base.exceptions import DBConnectionError, RedisConnectionError, RedisError
+            
+            if isinstance(e, DBConnectionError):
+                log_error(f"Database connection error: {e}")
+                return JSONResponse(
+                    {"detail": "DB connection failed"},
+                    status_code=500,
+                    headers={"X-Request-ID": request.state.request_id}
+                )
+            
+            if isinstance(e, RedisConnectionError):
+                log_error(f"Redis connection error: {e}")
+                return JSONResponse(
+                    {"detail": "Redis connection failed"},
+                    status_code=500,
+                    headers={"X-Request-ID": request.state.request_id}
+                )
+            
+            if isinstance(e, RedisError):
+                log_error(f"Redis operation error: {e}")
+                return JSONResponse(
+                    {"detail": "Redis operation failed"},
+                    status_code=500,
+                    headers={"X-Request-ID": request.state.request_id}
+                )
+            
             log_error(f"Request error: {e}")
             return JSONResponse(
                 {

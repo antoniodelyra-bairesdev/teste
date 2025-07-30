@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-
+from pydantic import ValidationError
 from ehp.core.models.schema.reading_settings import (
+    ColorMode,
+    FontOption,
+    FontSize,
+    FontWeight,
+    LineSpacing,
     ReadingSettings,
     ReadingSettingsUpdate,
 )
@@ -15,6 +20,74 @@ router = APIRouter(
     dependencies=[Depends(needs_api_key)],
     responses={404: {"description": "Not found"}},
 )
+
+
+def _create_validation_error_response(validation_error: ValidationError) -> HTTPException:
+    """
+    Create user-friendly error messages from Pydantic ValidationError.
+
+    Args:
+        validation_error: The ValidationError from Pydantic
+
+    Returns:
+        HTTPException with status 422 and detailed error messages
+    """
+    friendly_errors = []
+
+    for error in validation_error.errors():
+        field_path = ".".join(str(loc) for loc in error.get("loc", []))
+        error_type = error.get("type", "")
+
+        # Create field-specific error messages
+        if "font_size" in field_path:
+            valid_options = [e.value for e in FontSize]
+            friendly_errors.append(
+                f"Font size must be one of: {', '.join(valid_options)}"
+            )
+        elif "font_weight" in field_path:
+            valid_options = [e.value for e in FontWeight]
+            friendly_errors.append(
+                f"Font weight must be one of: {', '.join(valid_options)}"
+            )
+        elif "line_spacing" in field_path:
+            valid_options = [e.value for e in LineSpacing]
+            friendly_errors.append(
+                f"Line spacing must be one of: {', '.join(valid_options)}"
+            )
+        elif "color_mode" in field_path:
+            valid_options = [e.value for e in ColorMode]
+            friendly_errors.append(
+                f"Color mode must be one of: {', '.join(valid_options)}"
+            )
+        elif "fonts" in field_path:
+            if "headline" in field_path or "body" in field_path or "caption" in field_path:
+                valid_fonts = [e.value for e in FontOption]
+                friendly_errors.append(
+                    f"Font must be one of: {', '.join(valid_fonts)}"
+                )
+            elif "required" in error_type:
+                friendly_errors.append("Font settings are required")
+            else:
+                friendly_errors.append(
+                    f"Invalid font setting: {error.get('msg', 'Unknown error')}"
+                )
+        else:
+            # Fallback for unknown fields
+            friendly_errors.append(
+                f"Invalid value for {field_path}: {error.get('msg', 'Unknown error')}"
+            )
+
+    # If no specific errors were mapped, use generic message
+    if not friendly_errors:
+        friendly_errors.append("Invalid reading settings format")
+
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={
+            "message": "Reading settings validation failed",
+            "errors": friendly_errors
+        }
+    )
 
 
 @router.get("/reading-settings")
@@ -33,14 +106,14 @@ async def get_reading_settings(
 
     `ReadingSettings` containing:
 
-    - **font_size**: Text size preference (Small, Medium, Large, Extra Large)
+    - **font_size**: Text size preference (Small, Medium, Large)
     - **fonts**: Font family preferences for different text types
         - **headline**: Font for headlines and titles
         - **body**: Font for main content text
         - **caption**: Font for captions and small text
     - **font_weight**: Font weight preference (Light, Normal, Bold)
-    - **line_spacing**: Line spacing preference (Compact, Standard, Wide)
-    - **color_mode**: Color theme preference (Default, Light, Dark)
+    - **line_spacing**: Line spacing preference (Compact, Standard, Spacious)
+    - **color_mode**: Color mode preference including accessibility options
 
     ## Raises
 
@@ -84,10 +157,13 @@ async def get_reading_settings(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    except Exception as e:
+    except ValidationError as e:
+        raise _create_validation_error_response(e)
+    except Exception:
         await db_session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
 
 
@@ -107,11 +183,11 @@ async def create_reading_settings(
     ## Parameters
 
     - **settings**: Complete reading settings configuration
-        - **font_size**: Text size preference (Small, Medium, Large, Extra Large)
+        - **font_size**: Text size preference (Small, Medium, Large)
         - **fonts**: Font family preferences for different text types
         - **font_weight**: Font weight preference (Light, Normal, Bold)
-        - **line_spacing**: Line spacing preference (Compact, Standard, Wide)
-        - **color_mode**: Color theme preference (Default, Light, Dark)
+        - **line_spacing**: Line spacing preference (Compact, Standard, Spacious)
+        - **color_mode**: Color mode preference including accessibility options
 
     ## Returns
 
@@ -137,7 +213,7 @@ async def create_reading_settings(
             "caption": "Verdana"
         },
         "font_weight": "Bold",
-        "line_spacing": "Wide",
+        "line_spacing": "Spacious",
         "color_mode": "Dark"
     }
     ```
@@ -152,21 +228,20 @@ async def create_reading_settings(
             "caption": "Verdana"
         },
         "font_weight": "Bold",
-        "line_spacing": "Wide",
+        "line_spacing": "Spacious",
         "color_mode": "Dark"
     }
     ```
 
-    **Error Response (Invalid settings):**
+    **Error Response (Invalid font size):**
     ```json
     {
-        "detail": [
-            {
-                "loc": ["body", "font_size"],
-                "msg": "value is not a valid enumeration member",
-                "type": "type_error.enum"
-            }
-        ]
+        "detail": {
+            "message": "Reading settings validation failed",
+            "errors": [
+                "Font size must be one of: Small, Medium, Large"
+            ]
+        }
     }
     ```
     """
@@ -178,10 +253,13 @@ async def create_reading_settings(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    except Exception as e:
+    except ValidationError as e:
+        raise _create_validation_error_response(e)
+    except Exception:
         await db_session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
 
 
@@ -205,7 +283,7 @@ async def update_reading_settings(
         - **fonts**: Font family preferences (optional, can be partial)
         - **font_weight**: Font weight preference (optional)
         - **line_spacing**: Line spacing preference (optional)
-        - **color_mode**: Color theme preference (optional)
+        - **color_mode**: Color mode preference (optional)
 
     ## Returns
 
@@ -224,57 +302,36 @@ async def update_reading_settings(
     PUT /users/reading-settings
 
     {
-        "font_size": "Extra Large",
-        "color_mode": "Light"
+        "font_size": "Large",
+        "color_mode": "Dark"
     }
     ```
 
     **Response (Complete settings after merge):**
     ```json
     {
-        "font_size": "Extra Large",
+        "font_size": "Large",
         "fonts": {
             "headline": "Arial",
             "body": "Georgia",
             "caption": "Verdana"
         },
         "font_weight": "Bold",
-        "line_spacing": "Wide",
-        "color_mode": "Light"
-    }
-    ```
-
-    **Request (Update only specific fonts):**
-    ```
-    PUT /users/reading-settings
-
-    {
-        "fonts": {
-            "headline": "Times New Roman",
-            "body": "Helvetica"
-        }
-    }
-    ```
-
-    **Response (Fonts merged with existing):**
-    ```json
-    {
-        "font_size": "Large",
-        "fonts": {
-            "headline": "Times New Roman",
-            "body": "Helvetica",
-            "caption": "Verdana"
-        },
-        "font_weight": "Bold",
-        "line_spacing": "Wide",
+        "line_spacing": "Spacious",
         "color_mode": "Dark"
     }
     ```
 
-    **Error Response (User not found):**
+    **Error Response (Invalid color mode):**
     ```json
     {
-        "detail": "User not found"
+        "detail": {
+            "message": "Reading settings validation failed",
+            "errors": [
+                "Color mode must be one of: Default, Dark, Red-Green Color Blindness, "
+                "Blue-Yellow Color Blindness"
+            ]
+        }
     }
     ```
     """
@@ -289,16 +346,24 @@ async def update_reading_settings(
         updated_data = settings_update.model_dump(exclude_unset=True)
         new_settings.update(updated_data)
 
-        # Save merged settings
-        await repository.update_reading_settings(user.user.id, new_settings)
+        # Validate merged settings by creating a ReadingSettings instance
+        validated_settings = ReadingSettings(**new_settings)
 
-        return ReadingSettings(**new_settings)
+        # Save merged settings
+        await repository.update_reading_settings(
+            user.user.id, validated_settings.model_dump()
+        )
+
+        return validated_settings
     except UserNotFoundException:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    except Exception as e:
+    except ValidationError as e:
+        raise _create_validation_error_response(e)
+    except Exception:
         await db_session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )

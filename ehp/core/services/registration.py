@@ -1,3 +1,5 @@
+import secrets
+from datetime import datetime, timedelta
 from typing import Any, Dict
 
 from fastapi import APIRouter, Request
@@ -8,6 +10,7 @@ from ehp.core.models.db import Authentication, User
 from ehp.core.models.schema import RegistrationSchema
 from ehp.core.repositories.authentication import AuthenticationRepository
 from ehp.core.repositories.base import BaseRepository
+from ehp.core.services.email import UserMailer
 from ehp.db.db_manager import ManagedAsyncSession
 from ehp.utils import constants as const
 from ehp.utils import hash_password, make_response
@@ -46,15 +49,21 @@ async def register(
         # You might want to adjust this based on your business logic
         # default_profile = await session.get(Profile, 1)  # Assuming profile ID 1 exists
 
+        # Generate confirmation token
+        confirmation_token = secrets.token_hex(32)
+        confirmation_token_expires = datetime.now() + timedelta(days=30)
+
         # Create new authentication record
         new_auth = Authentication(
             user_name=registration_param.user_email,  # Using email as username
             user_email=registration_param.user_email,
             user_pwd=hash_password(registration_param.user_password),
             is_active=const.AUTH_ACTIVE,
-            is_confirmed=const.AUTH_CONFIRMED,  # Needs email confirmation
+            is_confirmed=const.AUTH_CONFIRMED,  # TODO: Set to inactive once SMTP server is in prod
             accept_terms=const.AUTH_ACCEPT_TERMS,
             profile_id=const.PROFILE_IDS.get("user"),  # Default profile ID for users
+            confirmation_token=confirmation_token,
+            confirmation_token_expires=confirmation_token_expires,
         )
 
         created_auth = await auth_repo.create(new_auth)
@@ -64,6 +73,46 @@ async def register(
         user_repository = BaseRepository(session, User)
         await user_repository.create(new_user)
 
+        # Commit the transaction to save user data
+        await session.commit()
+
+        # Send confirmation email (non-blocking, registration succeeds even if email fails)
+        try:
+            # Create email subject and body with mocked confirmation link until confirmation endpoint is ready
+            email_subject = "Welcome! Please Confirm Your Email"
+            confirmation_link = f"https://example.com/confirm-email?token={confirmation_token}"
+            email_body = f"""
+                Welcome to Wikiclip!
+                
+                Thank you for registering. Please confirm your email address by clicking the link below:
+                
+                {confirmation_link}
+                
+                This link will expire in 30 days.
+                
+                If you did not create an account, please ignore this email.
+                
+                Best regards,
+                Wikiclip Team
+            """
+            
+            mailer = UserMailer(new_user)
+            email_sent = await mailer.send_mail(
+                email_subject,
+                email_body,
+                [created_auth.user_email],
+                force=True,  # Force send even if user has email notifications disabled
+                include_self=False,  # We're explicitly passing the email
+            )
+            
+            if email_sent:
+                log_info(f"Confirmation email sent to {created_auth.user_email}")
+            else:
+                log_error(f"Failed to send confirmation email to {created_auth.user_email}")
+        except Exception as email_error:
+            # Log the error but don't fail the registration
+            log_error(f"Error sending confirmation email: {email_error}")
+
         # Prepare response data
         log_info(f"User created successfully: {new_user.full_name} ({new_user.id})")
         auth_data = await created_auth.to_dict()
@@ -71,6 +120,8 @@ async def register(
 
         # Remove sensitive data from response
         auth_data.pop("user_pwd", None)
+        auth_data.pop("confirmation_token", None)  # Don't expose token in response
+        auth_data.pop("confirmation_token_expires", None)
 
         response_json = {
             "code": 200,

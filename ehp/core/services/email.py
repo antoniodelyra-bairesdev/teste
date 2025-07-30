@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 from ehp.core.models.db import User
 from ehp.core.repositories.user import UserRepository
@@ -15,7 +14,7 @@ class UserMailer:
         self,
         subject: str,
         body: str,
-        extra_emails: Optional[list[str]] = None,
+        extra_emails: list[str] | None = None,
         force: bool = False,
         include_self: bool = True,
         db_session=None,

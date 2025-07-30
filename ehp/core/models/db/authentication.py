@@ -33,6 +33,12 @@ class Authentication(BaseModel):
     confirmation: Mapped[datetime] = mapped_column(
         "auth_dt_confirmation", DateTime, nullable=True
     )
+    confirmation_token: Mapped[str | None] = mapped_column(
+        "auth_tx_confirmation_token", String(255), nullable=True
+    )
+    confirmation_token_expires: Mapped[datetime | None] = mapped_column(
+        "auth_dt_confirmation_token_expires", DateTime, nullable=True
+    )
     accept_terms: Mapped[str] = mapped_column(
         "auth_st_accept_terms", String(1), default=AUTH_ACCEPT_TERMS, nullable=False
     )

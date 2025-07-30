@@ -16,6 +16,7 @@ from ehp.config import settings
 from ehp.core.models.schema.user import (
     EmailChangeRequestSchema,
     EmailChangeResponseSchema,
+    OnboardingStatusResponseSchema,
     PasswordChangeResponseSchema,
     PasswordChangeSchema,
     UpdatePasswordSchema,
@@ -26,7 +27,7 @@ from ehp.core.models.schema.user import (
     UserProfileUpdateSchema,
     AvatarUploadResponseSchema,
 )
-from fastapi import APIRouter, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Body, HTTPException, status, UploadFile, File
 from PIL import Image
 
 from ehp.core.repositories.user import UserRepository, UserNotFoundException
@@ -712,3 +713,61 @@ async def update_user_categories(
         raise HTTPException(
             status_code=HTTP_INTERNAL_SERVER_ERROR, detail="Internal server error"
         )
+
+
+@router.get("/me/onboarding-status")
+async def get_onboarding_status(
+    auth_context: AuthContext,
+) -> OnboardingStatusResponseSchema:
+    """
+    Get the onboarding status of the authenticated user.
+
+    Returns:
+        OnboardingStatusResponseSchema: The onboarding status of the user.
+    """
+    return OnboardingStatusResponseSchema(
+        onboarding_complete=auth_context.user.onboarding_complete
+    )
+
+
+@router.put("/me/onboarding-status", status_code=status.HTTP_204_NO_CONTENT)
+async def update_onboarding_status(
+    auth_context: AuthContext,
+    db_session: ManagedAsyncSession,
+    onboarding_complete: Annotated[bool, Body(embed=True)],
+) -> None:
+    """Update the onboarding status of the authenticated user.
+
+    Args:
+        auth_context (AuthContext): The authentication context containing user information.
+        db_session (ManagedAsyncSession): The database session for repository operations.
+        onboarding_status (bool): The new onboarding status to set for the user.
+
+    Returns:
+        None: Indicates successful update of the onboarding status.
+    """
+    repository = UserRepository(db_session)
+    user = auth_context.user
+    user.onboarding_complete = onboarding_complete
+    _ = await repository.update(user)
+
+
+@router.post("/me/onboarding-status/reset", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_onboarding_status(
+    auth_context: AuthContext,
+    db_session: ManagedAsyncSession,
+) -> None:
+    """Reset the onboarding status of the authenticated user.
+
+    Args:
+        auth_context (AuthContext): The authentication context containing user information.
+        db_session (ManagedAsyncSession): The database session for repository operations.
+
+    Returns:
+        None: Indicates successful reset of the onboarding status.
+    """
+    await update_onboarding_status(
+        auth_context=auth_context,
+        db_session=db_session,
+        onboarding_complete=False,
+    )

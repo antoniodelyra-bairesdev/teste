@@ -131,7 +131,7 @@ class MyWikiPagesResponseSchema(ValidatedModel):
 
     wikiclip_id: int = Field(..., description="WikiClip unique identifier")
     title: str = Field(..., description="WikiClip title")
-    url: HttpUrl = Field(..., description="WikiClip URL")
+    url: HttpUrl | None = Field(..., description="WikiClip URL")
     created_at: datetime = Field(..., description="Creation timestamp")
     tags: List[str] = Field(default_factory=list, description="Associated tags")
     content_summary: str = Field(

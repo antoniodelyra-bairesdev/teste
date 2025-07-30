@@ -1,5 +1,8 @@
+import hashlib
+import json
 import os
-from typing import Annotated
+from typing import Annotated, Any, Dict, List, Optional
+from typing_extensions import TypeVar
 
 from fastapi import (
     APIRouter,
@@ -11,6 +14,7 @@ from fastapi import (
     status,
 )
 
+from ehp.base.redis_storage import get_redis_client
 from ehp.core.models.db.wikiclip import WikiClip
 from ehp.core.models.schema.duplicate_check import DuplicateCheckResponseSchema
 from ehp.core.models.schema.paging import PagedQuery, PagedResponse, ResponseMetadata
@@ -25,11 +29,98 @@ from ehp.core.models.schema.wikiclip import (
 )
 from ehp.core.repositories.wikiclip import WikiClipRepository
 from ehp.core.services.documents import DocumentExtractor
-from ehp.core.services.session import AuthContext, ReadingSettingsContext, get_authentication
+from ehp.core.services.session import (
+    AuthContext,
+    get_authentication,
+    ReadingSettingsContext,
+)
 from ehp.db.db_manager import ManagedAsyncSession
 from ehp.utils.base import log_error, safe_calculate_total_pages
 from ehp.utils.cache import cache_response, invalidate_user_cache
 from ehp.utils.constants import HTTP_INTERNAL_SERVER_ERROR
+
+ResponseT = TypeVar("ResponseT")
+FilterT = TypeVar("FilterT", default=None)
+
+
+def create_empty_paged_response(
+    response_type: type[ResponseT],
+    filter_type: FilterT = None,
+    reading_settings: dict | None = None,
+) -> PagedResponse[ResponseT, FilterT]:
+    """Create an empty PagedResponse with correct empty data format."""
+    return PagedResponse[response_type, filter_type](
+        data=[],
+        total_count=0,
+        page=0,
+        page_size=0,
+        total_pages=0,
+        has_next=False,
+        has_previous=False,
+        filters=None,
+        metadata=(
+            ResponseMetadata(reading_settings=reading_settings)
+            if reading_settings is not None
+            else None
+        ),
+    )
+
+
+def generate_cache_key(
+    filters: Dict[str, Any], page: int, items_per_page: int, user_id: int
+) -> str:
+    """Generate consistent cache key for filter combinations"""
+    cache_data = {
+        "filters": sorted(filters.items()),
+        "page": page,
+        "items_per_page": items_per_page,
+        "user_id": user_id,
+    }
+    cache_string = json.dumps(cache_data, sort_keys=True)
+    return f"my_pages:{hashlib.sha256(cache_string.encode()).hexdigest()}"
+
+
+def get_cached_articles(
+    filters: Dict[str, Any], page: int, items_per_page: int, user_id: int
+) -> Optional[Dict[str, Any]]:
+    """Get cached articles for the given filters and pagination"""
+    cache_key = generate_cache_key(filters, page, items_per_page, user_id)
+
+    try:
+        redis_client = get_redis_client()
+        cached = redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+    except Exception as e:
+        log_error(f"Error getting cached articles: {e}")
+    return None
+
+
+def set_cached_articles(
+    filters: Dict[str, Any],
+    payload: List[Dict[str, Any]],
+    total_elements: int,
+    page: int,
+    items_per_page: int,
+    user_id: int,
+) -> None:
+    """Cache articles with filters and pagination info"""
+    cache_key = generate_cache_key(filters, page, items_per_page, user_id)
+
+    payload_to_cache = {
+        "filters": filters,
+        "payload": payload,
+        "page": page,
+        "items_per_page": items_per_page,
+        "total_elements": total_elements,
+    }
+
+    try:
+        redis_client = get_redis_client()
+        # Cache for 5 minutes
+        redis_client.setex(cache_key, 300, json.dumps(payload_to_cache, default=str))
+    except Exception as e:
+        log_error(f"Error setting cached articles: {e}")
 
 
 router = APIRouter(prefix="/wikiclip", tags=["wikiclip"])
@@ -40,10 +131,10 @@ def generate_summary(content: str) -> str:
     # This logic must be replaced after with an AI generated summary
     if not content:
         return ""
-    
+
     if len(content) <= 100:
         return content
-    
+
     return content[:100] + "..."
 
 
@@ -57,10 +148,10 @@ async def save_wikiclip(
 
     try:
         repository = WikiClipRepository(db_session)
-        
+
         # Generate summary from content
         summary = generate_summary(wikiclip_data.content)
-        
+
         # Create new WikiClip
         wikiclip = WikiClip(
             title=wikiclip_data.title,
@@ -77,6 +168,8 @@ async def save_wikiclip(
 
         # Invalidate trending cache for this user
         invalidate_user_cache(user.user.id, "trending")
+        # Invalidate my_pages cache for this user
+        invalidate_user_cache(user.user.id, "my_pages")
 
         return WikiClipResponseSchema(
             id=created_wikiclip.id,
@@ -85,7 +178,7 @@ async def save_wikiclip(
             related_links=created_wikiclip.related_links,
             created_at=created_wikiclip.created_at,
             content=created_wikiclip.content,
-            summary=created_wikiclip.summary
+            summary=created_wikiclip.summary,
         )
 
     except HTTPException:
@@ -223,13 +316,13 @@ async def duplicate_check_endpoint(
     "/my",
     dependencies=[Depends(get_authentication)],
 )
-@cache_response("my_pages", ttl=300)
 async def get_my_saved_pages(
     db_session: ManagedAsyncSession,
     user: AuthContext,
     reading_settings: ReadingSettingsContext,
     page: int = Query(1, ge=1, description="Page number, starting from 1"),
     size: int = Query(20, ge=1, le=100, description="Number of items per page"),
+    refresh: bool = Query(False, description="Bypass cache and get fresh data"),
 ) -> PagedResponse[MyWikiPagesResponseSchema, None]:
     """
     Get user's saved WikiClip pages with metadata and pagination.
@@ -296,49 +389,82 @@ async def get_my_saved_pages(
     """
 
     try:
-        repository = WikiClipRepository(db_session)
+        items_list = []
+        total_elements = 0
+        items_per_page = size
 
-        # Get total count and pages for the user
-        total_count = await repository.count_user_pages(user.user.id)
-        wikiclips = await repository.get_user_pages(
-            user.user.id, page=page, page_size=size
-        )
+        # For now, we don't have filters, but we'll create an empty dict for caching
+        filters = {}
 
-        # Transform WikiClips to response schema
-        response_data = []
-        for wikiclip in wikiclips:
-            # Extract tags if available (related many-to-many)
-            tags = (
-                [tag.description for tag in wikiclip.tags]
-                if hasattr(wikiclip, "tags") and wikiclip.tags
-                else []
+        if not refresh:
+            cached_payload = get_cached_articles(
+                filters, page, items_per_page, user.user.id
             )
+            if cached_payload:
+                items_list = cached_payload.get("payload", [])
+                total_elements = cached_payload.get("total_elements", 0)
 
-            # Content summary will be automatically truncated by the schema validator
+        if not items_list:
+            repository = WikiClipRepository(db_session)
 
-            # Count sections (simple count of paragraphs/line breaks)
-            sections_count = (
-                len([p for p in wikiclip.content.split("\n\n") if p.strip()])
-                if wikiclip.content
-                else 0
-            )
+            # Get total count and pages for the user
+            total_elements = await repository.count_user_pages(user.user.id)
 
-            response_data.append(
-                MyWikiPagesResponseSchema(
-                    wikiclip_id=wikiclip.id,
-                    title=wikiclip.title,
-                    url=wikiclip.url,
-                    created_at=wikiclip.created_at,
-                    tags=tags,
-                    content_summary=wikiclip.content,
-                    sections_count=sections_count,
+            # Return empty response if no data
+            if total_elements == 0:
+                return create_empty_paged_response(
+                    MyWikiPagesResponseSchema, reading_settings=reading_settings
                 )
+
+            wikiclips = await repository.get_user_pages(
+                user.user.id, page=page, page_size=size
             )
 
-        total_pages = safe_calculate_total_pages(total_count, size)
+            # Transform WikiClips to response schema
+            items_list = []
+            for wikiclip in wikiclips:
+                # Extract tags if available (related many-to-many)
+                tags = (
+                    [tag.description for tag in wikiclip.tags]
+                    if hasattr(wikiclip, "tags") and wikiclip.tags
+                    else []
+                )
+
+                # Count sections (simple count of paragraphs/line breaks)
+                sections_count = (
+                    len([p for p in wikiclip.content.split("\n\n") if p.strip()])
+                    if wikiclip.content
+                    else 0
+                )
+
+                items_list.append(
+                    {
+                        "wikiclip_id": wikiclip.id,
+                        "title": wikiclip.title,
+                        "url": wikiclip.url,
+                        "created_at": (
+                            wikiclip.created_at.isoformat()
+                            if wikiclip.created_at
+                            else None
+                        ),
+                        "tags": tags,
+                        "content_summary": wikiclip.summary if wikiclip.summary else "",
+                        "sections_count": sections_count,
+                    }
+                )
+
+            # Cache the results
+            set_cached_articles(
+                filters, items_list, total_elements, page, items_per_page, user.user.id
+            )
+
+        # Convert list of dicts to response schema objects
+        response_data = [MyWikiPagesResponseSchema(**item) for item in items_list]
+
+        total_pages = safe_calculate_total_pages(total_elements, size)
         return PagedResponse[MyWikiPagesResponseSchema, None](
             data=response_data,
-            total_count=total_count,
+            total_count=total_elements,
             page=page,
             page_size=size,
             total_pages=total_pages,
@@ -372,6 +498,13 @@ async def get_trending_wikiclips(
     try:
         repository = WikiClipRepository(db_session)
         total_count = await repository.count_trending(user.user.id)
+
+        # Return empty response if no data
+        if total_count == 0:
+            return create_empty_paged_response(
+                TrendingWikiClipSchema, reading_settings=reading_settings
+            )
+
         wikiclips = await repository.get_trending(
             user.user.id, page=paging.page, page_size=paging.size
         )
@@ -417,6 +550,15 @@ async def fetch_wikiclips(
     try:
         repository = WikiClipRepository(db_session)
         total_count = await repository.count(user.user.id, search)
+
+        # Return empty response if no data
+        if total_count == 0:
+            return create_empty_paged_response(
+                WikiClipResponseSchema,
+                WikiClipSearchSchema,
+                reading_settings=reading_settings,
+            )
+
         wikiclips = await repository.search(user.user.id, search)
         total_pages = safe_calculate_total_pages(total_count, search.size)
         return PagedResponse[WikiClipResponseSchema, WikiClipSearchSchema](
@@ -457,6 +599,15 @@ async def get_suggested_wikiclips(
 ) -> PagedResponse[SummarizedWikiclipResponseSchema, PagedQuery]:
     repository = WikiClipRepository(db_session)
     total_count = await repository.count_suggested(user.user.id)
+
+    # Return empty response if no data
+    if total_count == 0:
+        return create_empty_paged_response(
+            SummarizedWikiclipResponseSchema,
+            PagedQuery,
+            reading_settings=reading_settings,
+        )
+
     wikiclips = await repository.get_suggested(user.user.id, search)
 
     total_pages = safe_calculate_total_pages(total_count, search.size)
@@ -490,7 +641,7 @@ async def save_wikiclip_document(
     document: UploadFile,
 ):
     # Coverage is ignored here because the test client does not support unnamed files.
-    if not document.filename: # pragma: no cover
+    if not document.filename:  # pragma: no cover
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Document filename is required",
@@ -545,7 +696,7 @@ async def get_wikiclip_content(
     dependencies=[Depends(get_authentication)],
 )
 async def get_wikiclip(
-    wikiclip_id: int, 
+    wikiclip_id: int,
     db_session: ManagedAsyncSession,
     user: AuthContext,
     reading_settings: ReadingSettingsContext,

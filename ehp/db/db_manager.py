@@ -4,10 +4,11 @@ from typing import Annotated, AsyncGenerator, Dict, Optional
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.engine import Result
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_scoped_session
 from sqlalchemy.sql.selectable import Select
 
+from ehp.base.exceptions import DBConnectionError
 from .sqlalchemy_async_connector import async_session_factory
 
 
@@ -69,6 +70,11 @@ class DBManager:
                 yield session
                 self._transaction_stack[session_id].pop()
 
+        except (DisconnectionError, OperationalError) as e:
+            if len(self._transaction_stack[session_id]) == 1:
+                # Only rollback if this is the outermost transaction
+                await session.rollback()
+            raise DBConnectionError("DB connection failed") from e
         except SQLAlchemyError as e:
             if len(self._transaction_stack[session_id]) == 1:
                 # Only rollback if this is the outermost transaction
@@ -175,6 +181,9 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     session = db_manager.get_session()
     try:
         yield session
+    except (DisconnectionError, OperationalError) as e:
+        await session.rollback()
+        raise DBConnectionError("DB connection failed") from e
     except Exception as e:
         await session.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
@@ -210,6 +219,9 @@ async def get_managed_session(db_manager: DBManager = Depends(get_db_manager)) -
                 yield session
         else:
             yield session
+    except (DisconnectionError, OperationalError) as e:
+        await session.rollback()
+        raise DBConnectionError("DB connection failed") from e
     except SQLAlchemyError as e:
         await session.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

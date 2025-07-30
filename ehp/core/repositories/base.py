@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ehp.utils.base import log_error
+from ehp.utils.query_timeout import with_query_timeout
 
 T = TypeVar("T")
 
@@ -44,14 +45,18 @@ class BaseRepository(Repository[T], Generic[T]):
         if not obj_id:
             return None
         try:
-            return await self.session.get(self.model, obj_id)
+            return await with_query_timeout(
+                self.session.get(self.model, obj_id)
+            )
         except Exception as e:
             log_error(f"Error getting {self.model.__name__} by id {obj_id}: {e}")
             return None
 
     async def list_all(self) -> List[T]:
         try:
-            result = await self.session.scalars(select(self.model))
+            result = await with_query_timeout(
+                self.session.scalars(select(self.model))
+            )
             return list(result)
         except Exception as e:
             log_error(f"Error listing {self.model.__name__}: {e}")

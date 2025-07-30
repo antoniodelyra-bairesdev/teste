@@ -205,19 +205,19 @@ class AvatarUploadResponseSchema(BaseModel):
 class UserCategoriesUpdateSchema(BaseModel):
     """Schema for updating user preferred news categories."""
     category_ids: List[int] = Field(..., description="List of news category IDs")
-    
+
     @field_validator('category_ids')
     @classmethod
     def validate_category_ids(cls, v):
         if not isinstance(v, list):
             raise ValueError("Category IDs must be a list")
-        
+
         # Remove duplicates while preserving order
         unique_ids = []
         for category_id in v:
             if category_id not in unique_ids:
                 unique_ids.append(category_id)
-        
+
         return unique_ids
 
 
@@ -226,5 +226,9 @@ class UserCategoriesResponseSchema(BaseModel):
     id: int
     full_name: str
     preferred_news_categories: Optional[List[int]] = Field(default=None, description="List of preferred news category IDs")
-    
+
     model_config = ConfigDict(from_attributes=True)
+
+class OnboardingStatusResponseSchema(BaseModel):
+    """Schema for onboarding status response."""
+    onboarding_complete: bool

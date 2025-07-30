@@ -1,4 +1,4 @@
-from sqlalchemy import TIMESTAMP, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import TIMESTAMP, ForeignKey, Integer, String, Text, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
@@ -10,6 +10,10 @@ from .wikiclip_tag import wikiclip_tag
 
 class WikiClip(BaseModel):
     __tablename__ = "wikiclip"
+    __table_args__ = (
+        Index("idx_user_created", "user_cd_id", "wiki_dt_created_at"),
+        {"extend_existing": True}
+    )
 
     id: Mapped[int] = mapped_column("wiki_cd_id", Integer, primary_key=True)
     title: Mapped[str] = mapped_column("wiki_tx_title", String(500), nullable=False)

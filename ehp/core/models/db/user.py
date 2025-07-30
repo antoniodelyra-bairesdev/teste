@@ -55,7 +55,7 @@ class User(BaseModel):
         },
     )
 
-    avatar = Column("user_tx_avatar", String(500), nullable=True)
+    avatar: Mapped[str | None] = mapped_column("user_tx_avatar", String(500), nullable=True)
 
     auth_id: Mapped[int | None] = mapped_column(
         "auth_cd_id", Integer, ForeignKey("authentication.auth_cd_id"), nullable=True
@@ -69,6 +69,10 @@ class User(BaseModel):
     )
     country: Mapped["Country | None"] = relationship("Country", uselist=False)
 
-    preferred_news_categories = Column(
+    preferred_news_categories: Mapped[Any | None] = mapped_column(
         "user_js_preferred_news_categories", JSON, nullable=True
+    )
+
+    onboarding_complete: Mapped[bool] = mapped_column(
+        "user_bl_onboarding_complete", Boolean, default=False, nullable=False
     )

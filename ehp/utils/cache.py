@@ -3,6 +3,8 @@ import hashlib
 from functools import wraps
 from typing import Any, Callable, Optional
 
+from redis.exceptions import ConnectionError, TimeoutError, RedisError as RedisBaseError
+
 from ehp.base.redis_storage import get_redis_client
 from ehp.utils.base import log_error
 
@@ -57,6 +59,14 @@ def cache_response(key_prefix: str, ttl: int = 300, user_specific: bool = True):
                 redis_client.setex(cache_key, ttl, json.dumps(serialized_result, default=str))
                 return result
                 
+            except ConnectionError as e:
+                from ehp.base.exceptions import RedisConnectionError
+                log_error(f"Redis connection error in {func.__name__}: {e}")
+                raise RedisConnectionError("Redis connection failed") from e
+            except (TimeoutError, RedisBaseError) as e:
+                from ehp.base.exceptions import RedisError
+                log_error(f"Redis error in {func.__name__}: {e}")
+                raise RedisError("Redis operation failed") from e
             except Exception as e:
                 log_error(f"Cache error in {func.__name__}: {e}")
                 # If caching fails, still execute the function
@@ -90,6 +100,14 @@ def invalidate_cache_pattern(pattern: str) -> int:
                 break
         
         return deleted_count
+    except ConnectionError as e:
+        from ehp.base.exceptions import RedisConnectionError
+        log_error(f"Redis connection error during cache invalidation for pattern {pattern}: {e}")
+        raise RedisConnectionError("Redis connection failed") from e
+    except (TimeoutError, RedisBaseError) as e:
+        from ehp.base.exceptions import RedisError
+        log_error(f"Redis error during cache invalidation for pattern {pattern}: {e}")
+        raise RedisError("Redis operation failed") from e
     except Exception as e:
         log_error(f"Cache invalidation error for pattern {pattern}: {e}")
         return 0
@@ -124,6 +142,14 @@ def get_cached_value(key: str) -> Optional[Any]:
         redis_client = get_redis_client()
         cached = redis_client.get(key)
         return json.loads(cached) if cached else None
+    except ConnectionError as e:
+        from ehp.base.exceptions import RedisConnectionError
+        log_error(f"Redis connection error retrieving key {key}: {e}")
+        raise RedisConnectionError("Redis connection failed") from e
+    except (TimeoutError, RedisBaseError) as e:
+        from ehp.base.exceptions import RedisError
+        log_error(f"Redis error retrieving key {key}: {e}")
+        raise RedisError("Redis operation failed") from e
     except Exception as e:
         log_error(f"Cache retrieval error for key {key}: {e}")
         return None
@@ -145,6 +171,14 @@ def set_cached_value(key: str, value: Any, ttl: int = 300) -> bool:
         redis_client = get_redis_client()
         redis_client.setex(key, ttl, json.dumps(value, default=str))
         return True
+    except ConnectionError as e:
+        from ehp.base.exceptions import RedisConnectionError
+        log_error(f"Redis connection error setting key {key}: {e}")
+        raise RedisConnectionError("Redis connection failed") from e
+    except (TimeoutError, RedisBaseError) as e:
+        from ehp.base.exceptions import RedisError
+        log_error(f"Redis error setting key {key}: {e}")
+        raise RedisError("Redis operation failed") from e
     except Exception as e:
         log_error(f"Cache set error for key {key}: {e}")
         return False

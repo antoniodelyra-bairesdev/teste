@@ -92,5 +92,10 @@ class Settings(BaseSettings):
     LOGIN_ERROR_TIMEOUT: int = int(os.environ.get("LOGIN_ERROR_TIMEOUT", 60))
     LOGIN_ERROR_MAX_RETRY: int = int(os.environ.get("LOGIN_ERROR_MAX_RETRY", 5))
 
+    # Query timeout settings
+    QUERY_TIMEOUT: int = int(os.environ.get("QUERY_TIMEOUT", 2))
+    SLOW_QUERY_THRESHOLD: float = float(os.environ.get("SLOW_QUERY_THRESHOLD", 1.0))
+    MAX_QUERY_ITEMS: int = int(os.environ.get("MAX_QUERY_ITEMS", 100))
+
 
 settings = Settings()

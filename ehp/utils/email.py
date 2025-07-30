@@ -35,60 +35,73 @@ def _apply_reading_settings_to_html(
     # Convert settings to CSS values
     css_styles = []
 
-    # Font size mapping
+    # Font size mapping (Small, Medium, Large)
     font_size_map = {
         "Small": "14px",
-        "Medium": "16px",
+        "Medium": "16px", 
         "Large": "18px",
-        "Extra Large": "20px",
     }
     if font_size in font_size_map:
         css_styles.append(f"font-size: {font_size_map[font_size]}")
 
-    # Color mode mapping
+    # Color mode mapping with accessibility options
     if color_mode == "Dark":
         css_styles.append("background-color: #1a1a1a")
         css_styles.append("color: #ffffff")
     elif color_mode == "Light":
         css_styles.append("background-color: #ffffff")
         css_styles.append("color: #000000")
-    elif color_mode == "Sepia":
-        css_styles.append("background-color: #f4f3e6")
-        css_styles.append("color: #3c3c3c")
+    elif color_mode == "Red-Green Color Blindness":
+        # High contrast colors optimized for red-green color blindness
+        css_styles.append("background-color: #ffffff")
+        css_styles.append("color: #000000")
+        # Use blue instead of red/green for emphasis
+        css_styles.append("--accent-color: #0066cc")
+    elif color_mode == "Blue-Yellow Color Blindness":
+        # High contrast colors optimized for blue-yellow color blindness
+        css_styles.append("background-color: #ffffff")
+        css_styles.append("color: #000000")
+        # Use red instead of blue/yellow for emphasis
+        css_styles.append("--accent-color: #cc0000")
 
-    # Font weight mapping
-    font_weight_map = {"Light": "300", "Normal": "400", "Medium": "500", "Bold": "700"}
+    # Font weight mapping (Light, Normal, Bold)
+    font_weight_map = {"Light": "300", "Normal": "400", "Bold": "700"}
     if font_weight in font_weight_map:
         css_styles.append(f"font-weight: {font_weight_map[font_weight]}")
 
-    # Line spacing mapping
+    # Line spacing mapping (Compact, Standard, Spacious)
     line_spacing_map = {
         "Compact": "1.2",
         "Standard": "1.5",
-        "Wide": "1.8",
-        "Extra Wide": "2.0",
+        "Spacious": "1.8",
     }
     if line_spacing in line_spacing_map:
         css_styles.append(f"line-height: {line_spacing_map[line_spacing]}")
 
-    # Font family mapping
+    # Font family mapping for different text elements
+    headline_font = fonts.get("headline", "System")
     body_font = fonts.get("body", "System")
-    if body_font != "System":
-        # Map common font names to CSS font stacks
-        font_stack_map = {
-            "Arial": "Arial, sans-serif",
-            "Helvetica": "Helvetica, Arial, sans-serif",
-            "Georgia": "Georgia, serif",
-            "Times": "Times, 'Times New Roman', serif",
-            "Verdana": "Verdana, sans-serif",
-            "Courier": "'Courier New', monospace",
-        }
-        if body_font in font_stack_map:
-            css_styles.append(f"font-family: {font_stack_map[body_font]}")
+    caption_font = fonts.get("caption", "System")
+
+    # Map common font names to CSS font stacks
+    font_stack_map = {
+        "Arial": "Arial, sans-serif",
+        "Helvetica": "Helvetica, Arial, sans-serif",
+        "Georgia": "Georgia, serif",
+        "Times": "Times, 'Times New Roman', serif",
+        "Verdana": "Verdana, sans-serif",
+        "Courier": "'Courier New', monospace",
+        "System": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    }
+
+    # Apply body font as base style
+    if body_font in font_stack_map:
+        css_styles.append(f"font-family: {font_stack_map[body_font]}")
 
     # Apply styles by wrapping content in a styled div
     if css_styles:
         style_string = "; ".join(css_styles)
+        
         # If the HTML already has a body tag, add styles to it
         if "<body" in html_body.lower():
             # Add style to existing body tag
@@ -98,6 +111,23 @@ def _apply_reading_settings_to_html(
         else:
             # Wrap content in a styled div
             html_body = f'<div style="{style_string}">{html_body}</div>'
+
+        # Apply specific font styles to different elements if they exist
+        if headline_font in font_stack_map and headline_font != "System":
+            headline_style = f"font-family: {font_stack_map[headline_font]};"
+            # Apply to h1, h2, h3, h4, h5, h6 tags
+            for tag in ["h1", "h2", "h3", "h4", "h5", "h6"]:
+                pattern = rf"<{tag}([^>]*)>"
+                replacement = f'<{tag}\\1 style="{headline_style}">'
+                html_body = re.sub(pattern, replacement, html_body, flags=re.IGNORECASE)
+
+        if caption_font in font_stack_map and caption_font != "System":
+            caption_style = f"font-family: {font_stack_map[caption_font]};"
+            # Apply to small, caption, figcaption tags
+            for tag in ["small", "caption", "figcaption"]:
+                pattern = rf"<{tag}([^>]*)>"
+                replacement = f'<{tag}\\1 style="{caption_style}">'
+                html_body = re.sub(pattern, replacement, html_body, flags=re.IGNORECASE)
 
     return html_body
 
