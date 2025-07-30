@@ -11,7 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from starlette.responses import JSONResponse
 
 from ehp.base.exceptions import default_error_handler
-from ehp.base.middleware import RequestMiddleware
+from ehp.base.middleware import RequestMiddleware, authorized_session
 from ehp.config import settings
 from ehp.core.services import (
     logout_router,
@@ -24,7 +24,7 @@ from ehp.core.services import (
     user_router,
     wikiclip_router,
 )
-from ehp.db.db_manager import DBManager, get_db_manager
+from ehp.db.db_manager import get_db_manager
 from ehp.utils.authentication import needs_api_key
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ app = FastAPI(
     title=settings.APP_NAME,
     description=settings.APP_DESCRIPTION,
     version=settings.APP_VERSION,
-    dependencies=[Depends(get_db_manager)],
+    dependencies=[Depends(get_db_manager), Depends(authorized_session)],
 )
 
 # Create router for endpoints that require API key

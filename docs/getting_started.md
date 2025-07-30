@@ -2,15 +2,24 @@
 
 # Getting Started
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Building and running the service](#building-and-running-the-service)
-- [Testing the service](#testing-the-service)
-- [Swagger](#swagger)
-- [Deployment](#deployment)
-- [API](#api)
-- [Pre-Commits](#precommits)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+    - [Get the repository](#get-the-repository)
+    - [Using `venv` to manage your Python environment \[TBD\]](#using-venv-to-manage-your-python-environment-tbd)
+    - [Install dependencies](#install-dependencies)
+  - [Configuration](#configuration)
+  - [Set environment variables](#set-environment-variables)
+    - [Invoke command usage](#invoke-command-usage)
+  - [Building and running the service](#building-and-running-the-service)
+    - [The API key](#the-api-key)
+    - [Local development](#local-development)
+  - [Dependencies](#dependencies)
+  - [Migrations](#migrations)
+  - [Testing the Service \[TBD\]](#testing-the-service-tbd)
+  - [Swagger](#swagger)
+  - [Deployment](#deployment)
+  - [API](#api)
 
 This service is available in the following environments:
 1 - Production at https://prod.XXX [TBD]
@@ -310,10 +319,38 @@ documentation. All incoming requests will undergo the following steps:
 
         *Implementation: annotate fastapi route to validate the header.*
 
-        - *The `needs_api_key` annotation is available in the Repository.*
+        - *The `needs_api_key` and `authorized_session` annotations are available in the Repository.*
         - *The key is stored in a variable called `X_API_KEY_VALUE` in the `config/ehp_core.py` file.*
         - *The user key is stored in the database and should be created locally*
         - *Make sure you have all service keys set in the `settings` object.*
+
+2. **Special Identity Validation Cases:** For routes that require direct user interaction, like forgot password flow or change email flow,
+  where the user needs to click a generated link and will not have access to any Header, we use a separate router to avoid the
+  `needs_api_key` validation, as can be seen in the `application.py` file. This will allow the application to receive a valid JWT in the 
+  `x-token-auth` query param. Example:
+```python
+from ehp.base.middleware import authorized_session
+from ehp.utils.authentication import needs_api_key
+
+# Application is instantiated with the authorized_session to close all routes to at least
+# one form of authentication
+app = Fastapi(..., dependencies=[Depends(authorized_session)])
+
+# main_router where most routes will be assigned to uses needs_api_key to enforce X-Api-Key
+# requirements.
+main_router = APIRouter(dependencies=[Depends(needs_api_key)])
+
+# if there is a special route that needs to not use api key
+# we can register directly to the app instead
+
+app.include_router(my_unkeyed_router)
+
+# or 
+
+@app.get("/specific-unclosed-resource")
+async def do_something(): ...
+```
+
 
 - Health endpoints:
   - Meta: general service information.
